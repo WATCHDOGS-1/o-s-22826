@@ -247,7 +247,7 @@ const StudyRoom = () => {
         <div className="w-full lg:w-80 shrink-0 space-y-4">
           <StudyTimer isActive={true} currentStreak={currentStreak} sessionDuration={sessionDuration} />
           <PomodoroTimer />
-          <ProgressStats userId={user.id} autoRefresh={true} />
+          <ProgressStats userId={userId} autoRefresh={true} />
         </div>
       </div>
     </div>

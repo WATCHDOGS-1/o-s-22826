@@ -7,7 +7,7 @@ import { TrendingUp, Edit2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface ProgressStatsProps {
-  userId: string;
+  userId: string; // This should be the localStorage userId (text), not auth user id
   autoRefresh?: boolean;
 }
 
@@ -15,6 +15,7 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
   const [dailyMinutes, setDailyMinutes] = useState(0);
   const [weeklyMinutes, setWeeklyMinutes] = useState(0);
   const [monthlyMinutes, setMonthlyMinutes] = useState(0);
+  const [dbUserId, setDbUserId] = useState<string | null>(null);
   
   const [dailyGoal, setDailyGoal] = useState(120);
   const [weeklyGoal, setWeeklyGoal] = useState(840);
@@ -47,6 +48,25 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
       setTempMonthlyGoal(savedMonthlyGoal);
     }
     
+    // Get database user ID from localStorage userId
+    const fetchDbUserId = async () => {
+      const { data: user } = await (supabase as any)
+        .from('users')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
+      
+      if (user) {
+        setDbUserId(user.id);
+      }
+    };
+    
+    fetchDbUserId();
+  }, [userId]);
+
+  useEffect(() => {
+    if (!dbUserId) return;
+    
     loadProgress();
     
     // Subscribe to realtime updates for study_sessions
@@ -57,8 +77,7 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
         {
           event: '*',
           schema: 'public',
-          table: 'study_sessions',
-          filter: `user_id=eq.${userId}`
+          table: 'study_sessions'
         },
         () => {
           loadProgress();
@@ -69,39 +88,47 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userId, autoRefresh]);
+  }, [dbUserId, autoRefresh]);
 
   const loadProgress = async () => {
+    if (!dbUserId) return;
+    
     const today = new Date().toISOString().split('T')[0];
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     try {
-      // Daily - use raw SQL via RPC with type assertion
+      // Daily - use database user UUID
       const { data: dailyData, error: dailyError } = await (supabase.rpc as any)(
         'get_daily_minutes',
-        { p_user_id: userId, p_date: today }
+        { p_user_id: dbUserId, p_date: today }
       );
       if (!dailyError) {
         setDailyMinutes((dailyData as number) || 0);
+      } else {
+        console.error('Daily error:', dailyError);
       }
 
       // Weekly
       const { data: weeklyData, error: weeklyError } = await (supabase.rpc as any)(
         'get_period_minutes',
-        { p_user_id: userId, p_start_date: weekAgo }
+        { p_user_id: dbUserId, p_start_date: weekAgo }
       );
       if (!weeklyError) {
         setWeeklyMinutes((weeklyData as number) || 0);
+      } else {
+        console.error('Weekly error:', weeklyError);
       }
 
       // Monthly
       const { data: monthlyData, error: monthlyError } = await (supabase.rpc as any)(
         'get_period_minutes',
-        { p_user_id: userId, p_start_date: monthAgo }
+        { p_user_id: dbUserId, p_start_date: monthAgo }
       );
       if (!monthlyError) {
         setMonthlyMinutes((monthlyData as number) || 0);
+      } else {
+        console.error('Monthly error:', monthlyError);
       }
     } catch (error) {
       console.error('Error loading progress:', error);
