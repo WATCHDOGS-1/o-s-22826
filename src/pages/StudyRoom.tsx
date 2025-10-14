@@ -65,8 +65,17 @@ const StudyRoom = () => {
       setSessionDuration(Math.floor((Date.now() - sessionStartTime) / 1000));
     }, 1000);
 
+    // Save progress every minute
+    const saveInterval = setInterval(async () => {
+      const minutes = Math.floor((Date.now() - sessionStartTime) / 1000 / 60);
+      if (minutes >= 1) {
+        await saveStudySession(userId, roomId!, minutes);
+      }
+    }, 60000); // Every 60 seconds
+
     return () => {
       clearInterval(timer);
+      clearInterval(saveInterval);
       if (webrtcManager.current) {
         webrtcManager.current.disconnect();
       }

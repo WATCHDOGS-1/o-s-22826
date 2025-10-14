@@ -42,24 +42,53 @@ export const saveStudySession = async (
     return;
   }
 
-  // Save session
-  const { error } = await (supabase as any)
-    .from('study_sessions')
-    .insert([{
-      user_id: user.id,
-      room_id: roomId,
-      minutes_studied: minutesStudied,
-      ended_at: new Date().toISOString(),
-      date: new Date().toISOString().split('T')[0]
-    }]);
+  const today = new Date().toISOString().split('T')[0];
 
-  if (error) {
-    console.error('Error saving session:', error);
+  // Check if session already exists for today
+  const { data: existingSession } = await (supabase as any)
+    .from('study_sessions')
+    .select('id, minutes_studied')
+    .eq('user_id', user.id)
+    .eq('room_id', roomId)
+    .eq('date', today)
+    .maybeSingle();
+
+  if (existingSession) {
+    // Update existing session
+    const { error } = await (supabase as any)
+      .from('study_sessions')
+      .update({
+        minutes_studied: minutesStudied,
+        ended_at: new Date().toISOString()
+      })
+      .eq('id', existingSession.id);
+
+    if (error) {
+      console.error('Error updating session:', error);
+    } else {
+      console.log('Study session updated successfully');
+    }
   } else {
-    console.log('Study session saved successfully');
-    // Update streak manually since triggers might not work as expected
-    await updateStreak(user.id);
+    // Insert new session
+    const { error } = await (supabase as any)
+      .from('study_sessions')
+      .insert([{
+        user_id: user.id,
+        room_id: roomId,
+        minutes_studied: minutesStudied,
+        ended_at: new Date().toISOString(),
+        date: today
+      }]);
+
+    if (error) {
+      console.error('Error saving session:', error);
+    } else {
+      console.log('Study session saved successfully');
+    }
   }
+  
+  // Update streak
+  await updateStreak(user.id);
 };
 
 export const updateStreak = async (userDbId: string) => {
