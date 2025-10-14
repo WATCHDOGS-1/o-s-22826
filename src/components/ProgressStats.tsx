@@ -15,7 +15,7 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
   const [dailyMinutes, setDailyMinutes] = useState(0);
   const [weeklyMinutes, setWeeklyMinutes] = useState(0);
   const [monthlyMinutes, setMonthlyMinutes] = useState(0);
-  const [dbUserId, setDbUserId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   
   const [dailyGoal, setDailyGoal] = useState(120);
   const [weeklyGoal, setWeeklyGoal] = useState(840);
@@ -48,37 +48,12 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
       setTempMonthlyGoal(savedMonthlyGoal);
     }
     
-    // Get database user ID from localStorage userId
-    const fetchDbUserId = async () => {
-      console.log('Fetching DB user ID for:', userId);
-      const { data: user, error } = await (supabase as any)
-        .from('users')
-        .select('id')
-        .eq('user_id', userId)
-        .maybeSingle();
-      
-      console.log('DB User fetch result:', { user, error });
-      if (user) {
-        setDbUserId(user.id);
-        console.log('Set dbUserId to:', user.id);
-      }
-    };
-    
-    fetchDbUserId();
-  }, [userId]);
-
-  useEffect(() => {
-    if (!dbUserId) {
-      console.log('No dbUserId yet, waiting...');
-      return;
-    }
-    
-    console.log('Loading progress for dbUserId:', dbUserId);
+    // Load progress directly
     loadProgress();
     
-    // Subscribe to realtime updates for study_sessions
+    // Subscribe to realtime updates
     const channel = supabase
-      .channel('study_sessions_changes')
+      .channel('study_sessions_updates')
       .on(
         'postgres_changes',
         {
@@ -87,7 +62,6 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
           table: 'study_sessions'
         },
         () => {
-          console.log('Realtime update detected, reloading progress');
           loadProgress();
         }
       )
@@ -96,60 +70,55 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [dbUserId, autoRefresh]);
+  }, [userId, autoRefresh]);
 
   const loadProgress = async () => {
-    if (!dbUserId) {
-      console.log('loadProgress called but no dbUserId');
-      return;
-    }
-    
-    const today = new Date().toISOString().split('T')[0];
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-    console.log('Loading progress with params:', { dbUserId, today, weekAgo, monthAgo });
-
     try {
-      // Daily - use database user UUID
-      const { data: dailyData, error: dailyError } = await (supabase.rpc as any)(
+      setIsLoading(true);
+      
+      // First get the database user ID
+      const { data: user, error: userError } = await (supabase as any)
+        .from('users')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
+      
+      if (userError || !user) {
+        console.error('Error fetching user:', userError);
+        setIsLoading(false);
+        return;
+      }
+
+      const dbUserId = user.id;
+      const today = new Date().toISOString().split('T')[0];
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      // Daily
+      const { data: dailyData } = await (supabase.rpc as any)(
         'get_daily_minutes',
         { p_user_id: dbUserId, p_date: today }
       );
-      console.log('Daily result:', { dailyData, dailyError });
-      if (!dailyError) {
-        setDailyMinutes((dailyData as number) || 0);
-      } else {
-        console.error('Daily error:', dailyError);
-      }
+      setDailyMinutes((dailyData as number) || 0);
 
       // Weekly
-      const { data: weeklyData, error: weeklyError } = await (supabase.rpc as any)(
+      const { data: weeklyData } = await (supabase.rpc as any)(
         'get_period_minutes',
         { p_user_id: dbUserId, p_start_date: weekAgo }
       );
-      console.log('Weekly result:', { weeklyData, weeklyError });
-      if (!weeklyError) {
-        setWeeklyMinutes((weeklyData as number) || 0);
-      } else {
-        console.error('Weekly error:', weeklyError);
-      }
+      setWeeklyMinutes((weeklyData as number) || 0);
 
       // Monthly
-      const { data: monthlyData, error: monthlyError } = await (supabase.rpc as any)(
+      const { data: monthlyData } = await (supabase.rpc as any)(
         'get_period_minutes',
         { p_user_id: dbUserId, p_start_date: monthAgo }
       );
-      console.log('Monthly result:', { monthlyData, monthlyError });
-      if (!monthlyError) {
-        setMonthlyMinutes((monthlyData as number) || 0);
-      } else {
-        console.error('Monthly error:', monthlyError);
-      }
+      setMonthlyMinutes((monthlyData as number) || 0);
       
-      console.log('Final state:', { dailyMinutes: dailyData, weeklyMinutes: weeklyData, monthlyMinutes: monthlyData });
+      setIsLoading(false);
     } catch (error) {
       console.error('Error loading progress:', error);
+      setIsLoading(false);
     }
   };
 
@@ -185,7 +154,10 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
         <h3 className="font-semibold text-foreground">Progress Goals</h3>
       </div>
 
-      <div className="space-y-6">
+      {isLoading ? (
+        <div className="text-center py-8 text-muted-foreground">Loading...</div>
+      ) : (
+        <div className="space-y-6">
         <div>
           <div className="flex justify-between items-center text-sm mb-2">
             <span className="text-foreground font-medium">Daily</span>
@@ -318,6 +290,7 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
           <Progress value={(monthlyMinutes / monthlyGoal) * 100} className="h-2 [&>div]:bg-purple-500" />
         </div>
       </div>
+      )}
     </Card>
   );
 };
