@@ -50,14 +50,17 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
     
     // Get database user ID from localStorage userId
     const fetchDbUserId = async () => {
-      const { data: user } = await (supabase as any)
+      console.log('Fetching DB user ID for:', userId);
+      const { data: user, error } = await (supabase as any)
         .from('users')
         .select('id')
         .eq('user_id', userId)
         .maybeSingle();
       
+      console.log('DB User fetch result:', { user, error });
       if (user) {
         setDbUserId(user.id);
+        console.log('Set dbUserId to:', user.id);
       }
     };
     
@@ -65,8 +68,12 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
   }, [userId]);
 
   useEffect(() => {
-    if (!dbUserId) return;
+    if (!dbUserId) {
+      console.log('No dbUserId yet, waiting...');
+      return;
+    }
     
+    console.log('Loading progress for dbUserId:', dbUserId);
     loadProgress();
     
     // Subscribe to realtime updates for study_sessions
@@ -80,6 +87,7 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
           table: 'study_sessions'
         },
         () => {
+          console.log('Realtime update detected, reloading progress');
           loadProgress();
         }
       )
@@ -91,11 +99,16 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
   }, [dbUserId, autoRefresh]);
 
   const loadProgress = async () => {
-    if (!dbUserId) return;
+    if (!dbUserId) {
+      console.log('loadProgress called but no dbUserId');
+      return;
+    }
     
     const today = new Date().toISOString().split('T')[0];
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    console.log('Loading progress with params:', { dbUserId, today, weekAgo, monthAgo });
 
     try {
       // Daily - use database user UUID
@@ -103,6 +116,7 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
         'get_daily_minutes',
         { p_user_id: dbUserId, p_date: today }
       );
+      console.log('Daily result:', { dailyData, dailyError });
       if (!dailyError) {
         setDailyMinutes((dailyData as number) || 0);
       } else {
@@ -114,6 +128,7 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
         'get_period_minutes',
         { p_user_id: dbUserId, p_start_date: weekAgo }
       );
+      console.log('Weekly result:', { weeklyData, weeklyError });
       if (!weeklyError) {
         setWeeklyMinutes((weeklyData as number) || 0);
       } else {
@@ -125,11 +140,14 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
         'get_period_minutes',
         { p_user_id: dbUserId, p_start_date: monthAgo }
       );
+      console.log('Monthly result:', { monthlyData, monthlyError });
       if (!monthlyError) {
         setMonthlyMinutes((monthlyData as number) || 0);
       } else {
         console.error('Monthly error:', monthlyError);
       }
+      
+      console.log('Final state:', { dailyMinutes: dailyData, weeklyMinutes: weeklyData, monthlyMinutes: monthlyData });
     } catch (error) {
       console.error('Error loading progress:', error);
     }
