@@ -49,14 +49,26 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
     
     loadProgress();
     
-    // Auto-refresh every minute if enabled
-    if (autoRefresh) {
-      const interval = setInterval(() => {
-        loadProgress();
-      }, 60000); // 60 seconds
-      
-      return () => clearInterval(interval);
-    }
+    // Subscribe to realtime updates for study_sessions
+    const channel = supabase
+      .channel('study_sessions_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'study_sessions',
+          filter: `user_id=eq.${userId}`
+        },
+        () => {
+          loadProgress();
+        }
+      )
+      .subscribe();
+    
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [userId, autoRefresh]);
 
   const loadProgress = async () => {
@@ -66,30 +78,30 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
 
     try {
       // Daily - use raw SQL via RPC with type assertion
-      const { data: dailyData, error: dailyError } = await supabase.rpc(
-        'get_daily_minutes' as any,
-        { p_user_id: userId, p_date: today } as any
+      const { data: dailyData, error: dailyError } = await (supabase.rpc as any)(
+        'get_daily_minutes',
+        { p_user_id: userId, p_date: today }
       );
       if (!dailyError) {
-        setDailyMinutes(dailyData || 0);
+        setDailyMinutes((dailyData as number) || 0);
       }
 
       // Weekly
-      const { data: weeklyData, error: weeklyError } = await supabase.rpc(
-        'get_period_minutes' as any,
-        { p_user_id: userId, p_start_date: weekAgo } as any
+      const { data: weeklyData, error: weeklyError } = await (supabase.rpc as any)(
+        'get_period_minutes',
+        { p_user_id: userId, p_start_date: weekAgo }
       );
       if (!weeklyError) {
-        setWeeklyMinutes(weeklyData || 0);
+        setWeeklyMinutes((weeklyData as number) || 0);
       }
 
       // Monthly
-      const { data: monthlyData, error: monthlyError } = await supabase.rpc(
-        'get_period_minutes' as any,
-        { p_user_id: userId, p_start_date: monthAgo } as any
+      const { data: monthlyData, error: monthlyError } = await (supabase.rpc as any)(
+        'get_period_minutes',
+        { p_user_id: userId, p_start_date: monthAgo }
       );
       if (!monthlyError) {
-        setMonthlyMinutes(monthlyData || 0);
+        setMonthlyMinutes((monthlyData as number) || 0);
       }
     } catch (error) {
       console.error('Error loading progress:', error);
