@@ -62,14 +62,26 @@ const StudyRoom = () => {
     initializeRoom();
     loadUserStreak();
 
-    // Timer to update session duration every second
+    return () => {
+      if (webrtcManager.current) {
+        webrtcManager.current.disconnect();
+      }
+    };
+  }, [roomId, user]);
+
+  // Separate effect for timer to prevent re-initialization
+  useEffect(() => {
     const timer = setInterval(() => {
       if (!isPaused) {
         setSessionDuration(prev => prev + 1);
       }
     }, 1000);
 
-    // Save progress every minute
+    return () => clearInterval(timer);
+  }, [isPaused]);
+
+  // Separate effect for auto-save
+  useEffect(() => {
     const saveInterval = setInterval(async () => {
       const totalMinutes = Math.floor(sessionDuration / 60);
       if (totalMinutes > todaysInitialMinutes) {
@@ -77,14 +89,8 @@ const StudyRoom = () => {
       }
     }, 60000); // Every 60 seconds
 
-    return () => {
-      clearInterval(timer);
-      clearInterval(saveInterval);
-      if (webrtcManager.current) {
-        webrtcManager.current.disconnect();
-      }
-    };
-  }, [roomId, user, isPaused, sessionDuration, todaysInitialMinutes]);
+    return () => clearInterval(saveInterval);
+  }, [sessionDuration, todaysInitialMinutes, userId, roomId]);
 
   const loadUserStreak = async () => {
     await ensureUser(userId, displayName);

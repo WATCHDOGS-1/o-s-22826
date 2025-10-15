@@ -168,20 +168,33 @@ export class WebRTCManager {
         }
       } else {
         console.log('Tab came to foreground - checking connection');
+        
+        // Small delay to allow network to stabilize
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         // Check if we need to reconnect
         const needsReconnect = Array.from(this.peers.values()).some(
           peer => peer.peerConnection?.connectionState === 'disconnected' || 
-                  peer.peerConnection?.connectionState === 'failed'
+                  peer.peerConnection?.connectionState === 'failed' ||
+                  peer.peerConnection?.connectionState === 'closed'
         );
         
         if (needsReconnect) {
           console.log('Reconnecting peers...');
           // Attempt to restart ICE for failed connections
           this.peers.forEach((peer) => {
-            if (peer.peerConnection?.connectionState === 'failed' || 
-                peer.peerConnection?.connectionState === 'disconnected') {
-              console.log('Restarting ICE for peer:', peer.id);
-              peer.peerConnection.restartIce();
+            const state = peer.peerConnection?.connectionState;
+            if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+              console.log(`Restarting ICE for peer ${peer.id} (state: ${state})`);
+              try {
+                if (state === 'closed') {
+                  console.warn('Connection closed, may need manual rejoin');
+                } else {
+                  peer.peerConnection?.restartIce();
+                }
+              } catch (error) {
+                console.error(`Error reconnecting to peer ${peer.id}:`, error);
+              }
             }
           });
         }
