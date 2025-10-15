@@ -6,11 +6,12 @@ interface StudyTimerProps {
   isActive: boolean;
   currentStreak: number;
   sessionDuration: number;
+  todaysTotalMinutes: number;
   onPauseToggle?: () => void;
   isPaused?: boolean;
 }
 
-const StudyTimer = ({ isActive, currentStreak, sessionDuration, onPauseToggle, isPaused = false }: StudyTimerProps) => {
+const StudyTimer = ({ isActive, currentStreak, sessionDuration, todaysTotalMinutes, onPauseToggle, isPaused = false }: StudyTimerProps) => {
   const formatTime = (totalSeconds: number) => {
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -23,8 +24,10 @@ const StudyTimer = ({ isActive, currentStreak, sessionDuration, onPauseToggle, i
     };
   };
 
-  const time = formatTime(sessionDuration);
-  const totalMinutes = Math.floor(sessionDuration / 60);
+  // Calculate total time today (existing minutes + current session)
+  const totalSeconds = (todaysTotalMinutes * 60) + sessionDuration;
+  const time = formatTime(totalSeconds);
+  const totalMinutes = Math.floor(totalSeconds / 60);
 
   return (
     <Card className="p-6 bg-gradient-to-br from-card to-secondary border-border">
@@ -65,8 +68,16 @@ const StudyTimer = ({ isActive, currentStreak, sessionDuration, onPauseToggle, i
           <span>{time.seconds}</span>
         </div>
         <p className="text-muted-foreground">
-          {totalMinutes} {totalMinutes === 1 ? 'minute' : 'minutes'} studied
+          {totalMinutes} {totalMinutes === 1 ? 'minute' : 'minutes'} studied today
         </p>
+        {todaysTotalMinutes > 0 && (
+          <p className="text-xs text-muted-foreground mt-1">
+            This session: {Math.floor(sessionDuration / 60)} minutes
+          </p>
+        )}
+        {isPaused && (
+          <p className="text-xs text-amber-500 animate-pulse mt-2">Paused</p>
+        )}
       </div>
     </Card>
   );
