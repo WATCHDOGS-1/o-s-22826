@@ -159,15 +159,33 @@ export class WebRTCManager {
   private setupVisibilityHandler() {
     this.visibilityChangeHandler = async () => {
       if (document.hidden) {
-        console.log('Tab went to background');
-        // Store current state
+        console.log('Tab went to background - maintaining connection');
+        // Store current state but don't disconnect
         const videoTrack = this.localStream?.getVideoTracks()[0];
         if (videoTrack) {
           this.wasScreenSharing = !!(videoTrack as any).getSettings?.().displaySurface;
           this.wasVideoEnabled = videoTrack.readyState === 'live';
         }
       } else {
-        console.log('Tab came to foreground');
+        console.log('Tab came to foreground - checking connection');
+        // Check if we need to reconnect
+        const needsReconnect = Array.from(this.peers.values()).some(
+          peer => peer.peerConnection?.connectionState === 'disconnected' || 
+                  peer.peerConnection?.connectionState === 'failed'
+        );
+        
+        if (needsReconnect) {
+          console.log('Reconnecting peers...');
+          // Attempt to restart ICE for failed connections
+          this.peers.forEach((peer) => {
+            if (peer.peerConnection?.connectionState === 'failed' || 
+                peer.peerConnection?.connectionState === 'disconnected') {
+              console.log('Restarting ICE for peer:', peer.id);
+              peer.peerConnection.restartIce();
+            }
+          });
+        }
+        
         // Attempt to restart tracks if they were stopped
         await this.restartTracksIfNeeded();
       }

@@ -27,6 +27,8 @@ const StudyRoom = () => {
   const [currentStreak, setCurrentStreak] = useState(0);
   const [sessionStartTime] = useState(Date.now());
   const [sessionDuration, setSessionDuration] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [todaysInitialMinutes, setTodaysInitialMinutes] = useState(0);
 
   const webrtcManager = useRef<WebRTCManager | null>(null);
   const userId = getUserId();
@@ -62,14 +64,16 @@ const StudyRoom = () => {
 
     // Timer to update session duration every second
     const timer = setInterval(() => {
-      setSessionDuration(Math.floor((Date.now() - sessionStartTime) / 1000));
+      if (!isPaused) {
+        setSessionDuration(prev => prev + 1);
+      }
     }, 1000);
 
     // Save progress every minute
     const saveInterval = setInterval(async () => {
-      const minutes = Math.floor((Date.now() - sessionStartTime) / 1000 / 60);
-      if (minutes >= 1) {
-        await saveStudySession(userId, roomId!, minutes);
+      const totalMinutes = Math.floor(sessionDuration / 60);
+      if (totalMinutes > todaysInitialMinutes) {
+        await saveStudySession(userId, roomId!, totalMinutes);
       }
     }, 60000); // Every 60 seconds
 
@@ -80,13 +84,36 @@ const StudyRoom = () => {
         webrtcManager.current.disconnect();
       }
     };
-  }, [roomId, user]);
+  }, [roomId, user, isPaused, sessionDuration, todaysInitialMinutes]);
 
   const loadUserStreak = async () => {
     await ensureUser(userId, displayName);
     const stats = await getUserStats(userId);
     if (stats) {
       setCurrentStreak(stats.current_streak);
+    }
+    
+    // Load today's existing study time
+    const { data: user } = await (supabase as any)
+      .from('users')
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle();
+    
+    if (user) {
+      const today = new Date().toISOString().split('T')[0];
+      const { data: todaySession } = await (supabase as any)
+        .from('study_sessions')
+        .select('minutes_studied')
+        .eq('user_id', user.id)
+        .eq('date', today)
+        .maybeSingle();
+      
+      if (todaySession) {
+        const initialSeconds = todaySession.minutes_studied * 60;
+        setTodaysInitialMinutes(todaySession.minutes_studied);
+        setSessionDuration(initialSeconds);
+      }
     }
   };
 
@@ -132,16 +159,16 @@ const StudyRoom = () => {
   };
 
   const handleLeaveRoom = async () => {
-    // Calculate session duration
-    const sessionDuration = Math.floor((Date.now() - sessionStartTime) / 1000 / 60);
+    // Calculate total session duration
+    const totalMinutes = Math.floor(sessionDuration / 60);
 
-    // Save session if more than 1 minute
-    if (sessionDuration >= 1) {
-      await saveStudySession(userId, roomId!, sessionDuration);
+    // Save session if more than initial
+    if (totalMinutes > todaysInitialMinutes) {
+      await saveStudySession(userId, roomId!, totalMinutes);
 
       toast({
         title: 'Session Saved',
-        description: `Studied for ${sessionDuration} minutes`,
+        description: `Total studied today: ${totalMinutes} minutes`,
       });
     }
 
@@ -245,7 +272,13 @@ const StudyRoom = () => {
         </div>
 
         <div className="w-full lg:w-80 shrink-0 space-y-4">
-          <StudyTimer isActive={true} currentStreak={currentStreak} sessionDuration={sessionDuration} />
+          <StudyTimer 
+            isActive={!isPaused} 
+            currentStreak={currentStreak} 
+            sessionDuration={sessionDuration}
+            onPauseToggle={() => setIsPaused(!isPaused)}
+            isPaused={isPaused}
+          />
           <PomodoroTimer />
           <ProgressStats userId={userId} autoRefresh={true} />
         </div>
