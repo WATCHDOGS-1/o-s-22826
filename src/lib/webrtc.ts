@@ -39,7 +39,7 @@ export class WebRTCManager {
 
   async init() {
     try {
-      // Get video and audio stream with Brave-compatible settings
+      // Get video stream only - no audio/mic
       try {
         this.localStream = await navigator.mediaDevices.getUserMedia({
           video: { 
@@ -48,22 +48,11 @@ export class WebRTCManager {
             facingMode: 'user',
             frameRate: { ideal: 30, max: 60 }
           },
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          }
-        });
-        
-        // Mute local audio playback to prevent echo (user still hears others)
-        this.localStream.getAudioTracks().forEach(track => {
-          // Keep track enabled so we send audio to peers
-          track.enabled = true;
+          audio: false
         });
         
         console.log('Local media stream obtained with', 
-          this.localStream.getVideoTracks().length, 'video tracks and',
-          this.localStream.getAudioTracks().length, 'audio tracks');
+          this.localStream.getVideoTracks().length, 'video tracks');
       } catch (mediaError) {
         console.error('Could not access camera/microphone:', mediaError);
         // Try video only as fallback
@@ -233,42 +222,7 @@ export class WebRTCManager {
       }
     }
 
-    // Check if audio track ended
-    if (audioTrack && audioTrack.readyState === 'ended') {
-      console.log('Restarting audio track after tab became visible');
-      try {
-        const newStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          }
-        });
-        
-        const newAudioTrack = newStream.getAudioTracks()[0];
-        this.localStream.removeTrack(audioTrack);
-        this.localStream.addTrack(newAudioTrack);
-        
-        // Setup ended handler for new track
-        newAudioTrack.onended = () => {
-          console.warn('Audio track ended unexpectedly');
-        };
-        
-        // Update peer connections
-        this.peers.forEach(peer => {
-          const sender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'audio');
-          if (sender) {
-            sender.replaceTrack(newAudioTrack).catch(e => {
-              console.error('Error replacing audio track:', e);
-            });
-          }
-        });
-        
-        console.log('Audio track restarted successfully');
-      } catch (error) {
-        console.error('Error restarting audio track:', error);
-      }
-    }
+    // No audio track handling - mic is disabled
   }
 
   private joinRoom() {

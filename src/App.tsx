@@ -10,6 +10,7 @@ import Profile from "./pages/Profile";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
+import Footer from "./components/Footer";
 
 const queryClient = new QueryClient();
 
@@ -19,16 +20,21 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/auth" element={<Auth />} />
-          <Route path="/" element={<Home />} />
-          <Route path="/study/:roomId" element={<StudyRoom />} />
-          <Route path="/leaderboard" element={<Leaderboard />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <div className="flex flex-col min-h-screen">
+          <div className="flex-1">
+            <Routes>
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/" element={<Home />} />
+              <Route path="/study/:roomId" element={<StudyRoom />} />
+              <Route path="/leaderboard" element={<Leaderboard />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </div>
+          <Footer />
+        </div>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
