@@ -54,6 +54,13 @@ export class WebRTCManager {
             autoGainControl: true
           }
         });
+        
+        // Mute local audio playback to prevent echo (user still hears others)
+        this.localStream.getAudioTracks().forEach(track => {
+          // Keep track enabled so we send audio to peers
+          track.enabled = true;
+        });
+        
         console.log('Local media stream obtained with', 
           this.localStream.getVideoTracks().length, 'video tracks and',
           this.localStream.getAudioTracks().length, 'audio tracks');
@@ -157,50 +164,11 @@ export class WebRTCManager {
   }
 
   private setupVisibilityHandler() {
+    // Simplified visibility handler - keep connections alive like Google Meet
+    // WebRTC will maintain connections in background automatically
     this.visibilityChangeHandler = async () => {
-      if (document.hidden) {
-        console.log('Tab went to background - maintaining connection');
-        // Store current state but don't disconnect
-        const videoTrack = this.localStream?.getVideoTracks()[0];
-        if (videoTrack) {
-          this.wasScreenSharing = !!(videoTrack as any).getSettings?.().displaySurface;
-          this.wasVideoEnabled = videoTrack.readyState === 'live';
-        }
-      } else {
-        console.log('Tab came to foreground - checking connection');
-        
-        // Small delay to allow network to stabilize
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Check if we need to reconnect
-        const needsReconnect = Array.from(this.peers.values()).some(
-          peer => peer.peerConnection?.connectionState === 'disconnected' || 
-                  peer.peerConnection?.connectionState === 'failed' ||
-                  peer.peerConnection?.connectionState === 'closed'
-        );
-        
-        if (needsReconnect) {
-          console.log('Reconnecting peers...');
-          // Attempt to restart ICE for failed connections
-          this.peers.forEach((peer) => {
-            const state = peer.peerConnection?.connectionState;
-            if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-              console.log(`Restarting ICE for peer ${peer.id} (state: ${state})`);
-              try {
-                if (state === 'closed') {
-                  console.warn('Connection closed, may need manual rejoin');
-                } else {
-                  peer.peerConnection?.restartIce();
-                }
-              } catch (error) {
-                console.error(`Error reconnecting to peer ${peer.id}:`, error);
-              }
-            }
-          });
-        }
-        
-        // Attempt to restart tracks if they were stopped
-        await this.restartTracksIfNeeded();
+      if (!document.hidden) {
+        console.log('Tab returned to foreground - connection maintained');
       }
     };
 

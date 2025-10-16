@@ -100,7 +100,7 @@ const StudyRoom = () => {
       setCurrentStreak(stats.current_streak);
     }
     
-    // Load today's existing study time
+    // Load today's existing study time and session start
     const { data: user } = await (supabase as any)
       .from('users')
       .select('id')
@@ -111,16 +111,47 @@ const StudyRoom = () => {
       const today = new Date().toISOString().split('T')[0];
       const { data: todaySession } = await (supabase as any)
         .from('study_sessions')
-        .select('minutes_studied')
+        .select('minutes_studied, session_start')
         .eq('user_id', user.id)
         .eq('date', today)
         .maybeSingle();
       
       if (todaySession) {
         setTodaysTotalMinutes(todaySession.minutes_studied);
+        
+        // Calculate elapsed time from session_start if it exists
+        if (todaySession.session_start) {
+          const sessionStartTime = new Date(todaySession.session_start).getTime();
+          const now = Date.now();
+          const elapsedSeconds = Math.floor((now - sessionStartTime) / 1000);
+          setSessionDuration(elapsedSeconds);
+        } else {
+          // No session_start, this is a new session
+          setSessionDuration(0);
+          
+          // Update the session with session_start
+          await (supabase as any)
+            .from('study_sessions')
+            .update({ session_start: new Date().toISOString() })
+            .eq('user_id', user.id)
+            .eq('date', today);
+        }
+      } else {
+        // No session today, start fresh
+        setTodaysTotalMinutes(0);
+        setSessionDuration(0);
+        
+        // Create new session with session_start
+        await (supabase as any)
+          .from('study_sessions')
+          .insert({
+            user_id: user.id,
+            room_id: roomId,
+            date: today,
+            minutes_studied: 0,
+            session_start: new Date().toISOString()
+          });
       }
-      // Session duration always starts at 0 for new sessions
-      setSessionDuration(0);
     }
   };
 

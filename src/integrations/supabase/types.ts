@@ -21,6 +21,7 @@ export type Database = {
           id: string
           minutes_studied: number
           room_id: string
+          session_start: string | null
           started_at: string | null
           user_id: string | null
         }
@@ -30,6 +31,7 @@ export type Database = {
           id?: string
           minutes_studied?: number
           room_id: string
+          session_start?: string | null
           started_at?: string | null
           user_id?: string | null
         }
@@ -39,6 +41,7 @@ export type Database = {
           id?: string
           minutes_studied?: number
           room_id?: string
+          session_start?: string | null
           started_at?: string | null
           user_id?: string | null
         }

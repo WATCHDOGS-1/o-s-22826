@@ -109,8 +109,22 @@ export const updateStreak = async (userDbId: string) => {
   }
 
   const today = new Date().toISOString().split('T')[0];
-  const lastStudyDate = stats.last_study_date;
+  
+  // Check if user studied at least 25 minutes today
+  const { data: todaySession } = await (supabase as any)
+    .from('study_sessions')
+    .select('minutes_studied')
+    .eq('user_id', userDbId)
+    .eq('date', today)
+    .maybeSingle();
+  
+  // Only update streak if user studied at least 25 minutes
+  if (!todaySession || todaySession.minutes_studied < 25) {
+    console.log('User has not studied 25 minutes yet today');
+    return;
+  }
 
+  const lastStudyDate = stats.last_study_date;
   let newStreak = stats.current_streak;
 
   if (lastStudyDate) {

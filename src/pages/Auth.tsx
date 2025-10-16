@@ -118,6 +118,15 @@ const Auth = () => {
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? 'Signing in...' : 'Sign In'}
               </Button>
+              <p className="text-center text-sm text-muted-foreground">
+                <button
+                  type="button"
+                  onClick={() => navigate('/reset-password')}
+                  className="text-primary hover:underline"
+                >
+                  Forgot password?
+                </button>
+              </p>
             </form>
           </TabsContent>
 
