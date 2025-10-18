@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -14,7 +14,7 @@ const signupSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters')
 });
 
-const Auth = () => {
+const SignUp = () => {
   const [loading, setLoading] = useState(false);
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -114,31 +114,12 @@ const Auth = () => {
     }
   };
 
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
-
-    if (error) {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive'
-      });
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-secondary p-4">
       <Card className="w-full max-w-md p-8">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-primary mb-2">OnlyFocus</h1>
-          <p className="text-muted-foreground">Track your study sessions with friends</p>
+          <p className="text-muted-foreground">Create your account</p>
         </div>
 
         <form onSubmit={handleSignUp} className="space-y-4">
@@ -182,30 +163,16 @@ const Auth = () => {
             {loading ? 'Creating account...' : 'Sign Up'}
           </Button>
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">
-                Or
-              </span>
-            </div>
+          <div className="text-center text-sm">
+            <span className="text-muted-foreground">Already have an account? </span>
+            <Link to="/signin" className="text-primary hover:underline">
+              Sign In
+            </Link>
           </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={handleSignIn}
-            disabled={loading}
-          >
-            {loading ? 'Signing in...' : 'Sign In'}
-          </Button>
         </form>
       </Card>
     </div>
   );
 };
 
-export default Auth;
+export default SignUp;

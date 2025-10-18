@@ -7,7 +7,7 @@ const Index = () => {
   const navigate = useNavigate();
 
   const handleJoinClick = () => {
-    navigate('/auth');
+    navigate('/signup');
   };
 
   return (

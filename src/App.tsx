@@ -8,7 +8,8 @@ import Home from "./pages/Home";
 import StudyRoom from "./pages/StudyRoom";
 import Leaderboard from "./pages/Leaderboard";
 import Profile from "./pages/Profile";
-import Auth from "./pages/Auth";
+import SignIn from "./pages/SignIn";
+import SignUp from "./pages/SignUp";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 import Footer from "./components/Footer";
@@ -25,7 +26,8 @@ const App = () => (
           <div className="flex-1">
             <Routes>
               <Route path="/" element={<Index />} />
-              <Route path="/auth" element={<Auth />} />
+              <Route path="/signin" element={<SignIn />} />
+              <Route path="/signup" element={<SignUp />} />
               <Route path="/home" element={<Home />} />
               <Route path="/study/:roomId" element={<StudyRoom />} />
               <Route path="/leaderboard" element={<Leaderboard />} />
