@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Trophy, ArrowLeft, Clock, Medal } from 'lucide-react';
 import { getWeeklyLeaderboard } from '@/lib/studyTracker';
+import { supabase } from '@/integrations/supabase/client';
 
 interface LeaderboardEntry {
   user_id: string;
@@ -17,8 +18,22 @@ const Leaderboard = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadLeaderboard();
-  }, []);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        navigate('/auth');
+      } else {
+        loadLeaderboard();
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!session) {
+        navigate('/auth');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
 
   const loadLeaderboard = async () => {
     setLoading(true);
@@ -45,7 +60,7 @@ const Leaderboard = () => {
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
+          <Button variant="ghost" size="icon" onClick={() => navigate('/home')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex-1">
@@ -97,7 +112,7 @@ const Leaderboard = () => {
         </Card>
 
         <div className="text-center mt-8">
-          <Button onClick={() => navigate('/')} variant="outline">
+          <Button onClick={() => navigate('/home')} variant="outline">
             Back to Home
           </Button>
         </div>

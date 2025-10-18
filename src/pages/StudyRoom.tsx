@@ -192,7 +192,7 @@ const StudyRoom = () => {
         description: 'Failed to connect to study room',
         variant: 'destructive',
       });
-      navigate('/');
+      navigate('/home');
     }
   };
 
@@ -215,7 +215,7 @@ const StudyRoom = () => {
       webrtcManager.current.disconnect();
     }
 
-    navigate('/');
+    navigate('/home');
   };
 
   const handleSignOut = async () => {

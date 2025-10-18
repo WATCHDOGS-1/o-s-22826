@@ -95,7 +95,7 @@ const Profile = () => {
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
+          <Button variant="ghost" size="icon" onClick={() => navigate('/home')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex-1">
@@ -203,7 +203,7 @@ const Profile = () => {
         </div>
 
         <div className="flex justify-center gap-4 mt-8">
-          <Button onClick={() => navigate('/')} variant="outline">
+          <Button onClick={() => navigate('/home')} variant="outline">
             Back to Home
           </Button>
           <Button onClick={() => navigate('/leaderboard')} variant="outline">

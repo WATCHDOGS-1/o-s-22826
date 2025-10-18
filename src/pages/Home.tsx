@@ -14,21 +14,25 @@ const Home = () => {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user || null);
+      if (!session) {
+        navigate('/auth');
+      } else {
+        setUser(session.user);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user || null);
+      if (!session) {
+        navigate('/auth');
+      } else {
+        setUser(session.user);
+      }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [navigate]);
 
   const handleJoinRoom = () => {
-    if (!user) {
-      navigate('/auth');
-      return;
-    }
     if (displayNameInput.trim()) {
       setDisplayName(displayNameInput.trim());
     }
@@ -37,6 +41,7 @@ const Home = () => {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
+    navigate('/');
   };
 
   return (
@@ -80,7 +85,7 @@ const Home = () => {
               onClick={handleJoinRoom}
               className="w-full bg-primary hover:bg-primary/90 text-white font-semibold h-12"
             >
-              {user ? 'Join Global Study Room' : 'Sign In to Join'}
+              Join Global Study Room
             </Button>
           </div>
         </Card>
