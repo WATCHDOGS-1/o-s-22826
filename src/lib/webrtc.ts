@@ -594,10 +594,13 @@ export class WebRTCManager {
     
     // If track exists and is enabled, turn it OFF
     if (videoTrack?.enabled) {
+      // Stop the track immediately to turn off the camera light
       videoTrack.stop();
       this.localStream.removeTrack(videoTrack);
       
-      // Update peer connections
+      console.log('Video track stopped and removed');
+      
+      // Update peer connections to remove video
       this.peers.forEach(peer => {
         const sender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
         if (sender) {
@@ -784,15 +787,19 @@ export class WebRTCManager {
       this.visibilityChangeHandler = null;
     }
 
+    // Stop local stream first - this ensures camera light turns off
+    if (this.localStream) {
+      this.localStream.getTracks().forEach(track => {
+        console.log('Stopping track:', track.kind, track.label);
+        track.stop();
+      });
+      this.localStream = null;
+    }
+
     // Close all peer connections
     this.peers.forEach(peer => {
       peer.peerConnection?.close();
     });
-
-    // Stop local stream
-    if (this.localStream) {
-      this.localStream.getTracks().forEach(track => track.stop());
-    }
 
     // Leave signaling channel
     if (this.channel) {
