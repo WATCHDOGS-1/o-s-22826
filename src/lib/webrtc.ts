@@ -39,7 +39,7 @@ export class WebRTCManager {
 
   async init() {
     try {
-      // Get video stream only - no audio/mic
+      // Get video and audio stream but mute audio completely
       try {
         this.localStream = await navigator.mediaDevices.getUserMedia({
           video: { 
@@ -48,7 +48,12 @@ export class WebRTCManager {
             facingMode: 'user',
             frameRate: { ideal: 30, max: 60 }
           },
-          audio: false
+          audio: true
+        });
+        
+        // Immediately mute all audio tracks so no audio is transmitted
+        this.localStream.getAudioTracks().forEach(track => {
+          track.enabled = false;
         });
         
         console.log('Local media stream obtained with', 
@@ -62,7 +67,12 @@ export class WebRTCManager {
               width: { ideal: 1280 },
               height: { ideal: 720 }
             },
-            audio: false
+            audio: true
+          });
+          
+          // Mute audio
+          this.localStream.getAudioTracks().forEach(track => {
+            track.enabled = false;
           });
           console.log('Fallback: Video-only stream obtained');
         } catch (fallbackError) {
@@ -335,6 +345,13 @@ export class WebRTCManager {
     // Handle incoming tracks
     peerConnection.ontrack = (event) => {
       console.log('Received remote track from:', peerId, 'kind:', event.track.kind);
+      
+      // Disable all audio tracks from remote peers - no one should hear anyone
+      if (event.track.kind === 'audio') {
+        event.track.enabled = false;
+        console.log('Muted audio track from peer:', peerId);
+      }
+      
       const peer = this.peers.get(peerId);
       if (peer) {
         if (!peer.stream) {
