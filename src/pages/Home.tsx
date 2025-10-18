@@ -118,12 +118,30 @@ const Home = () => {
         </div>
 
         {/* Navigation */}
-        <div className="flex justify-center gap-4 mt-12">
-          <Button onClick={() => navigate('/leaderboard')} variant="outline">
-            View Leaderboard
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto mt-12">
+          <Button 
+            onClick={() => navigate('/leaderboard')} 
+            variant="outline"
+            className="h-16 flex flex-col items-center justify-center gap-1"
+          >
+            <Trophy className="h-5 w-5" />
+            <span>Leaderboard</span>
           </Button>
-          <Button onClick={() => navigate('/profile')} variant="outline">
-            My Profile
+          <Button 
+            onClick={() => navigate('/profile')} 
+            variant="outline"
+            className="h-16 flex flex-col items-center justify-center gap-1"
+          >
+            <Users className="h-5 w-5" />
+            <span>Goals & Progress</span>
+          </Button>
+          <Button 
+            onClick={() => navigate('/profile')} 
+            variant="outline"
+            className="h-16 flex flex-col items-center justify-center gap-1"
+          >
+            <BookOpen className="h-5 w-5" />
+            <span>My Stats</span>
           </Button>
         </div>
       </div>
