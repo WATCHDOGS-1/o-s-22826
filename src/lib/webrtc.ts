@@ -39,7 +39,7 @@ export class WebRTCManager {
 
   async init() {
     try {
-      // Get video and audio stream but mute audio completely
+      // Get video and audio stream with Brave-compatible settings
       try {
         this.localStream = await navigator.mediaDevices.getUserMedia({
           video: { 
@@ -48,16 +48,22 @@ export class WebRTCManager {
             facingMode: 'user',
             frameRate: { ideal: 30, max: 60 }
           },
-          audio: true
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
         });
         
-        // Immediately mute all audio tracks so no audio is transmitted
+        // Mute local audio playback to prevent echo (user still hears others)
         this.localStream.getAudioTracks().forEach(track => {
-          track.enabled = false;
+          // Keep track enabled so we send audio to peers
+          track.enabled = true;
         });
         
         console.log('Local media stream obtained with', 
-          this.localStream.getVideoTracks().length, 'video tracks');
+          this.localStream.getVideoTracks().length, 'video tracks and',
+          this.localStream.getAudioTracks().length, 'audio tracks');
       } catch (mediaError) {
         console.error('Could not access camera/microphone:', mediaError);
         // Try video only as fallback
@@ -67,12 +73,7 @@ export class WebRTCManager {
               width: { ideal: 1280 },
               height: { ideal: 720 }
             },
-            audio: true
-          });
-          
-          // Mute audio
-          this.localStream.getAudioTracks().forEach(track => {
-            track.enabled = false;
+            audio: false
           });
           console.log('Fallback: Video-only stream obtained');
         } catch (fallbackError) {
@@ -232,7 +233,42 @@ export class WebRTCManager {
       }
     }
 
-    // No audio track handling - mic is disabled
+    // Check if audio track ended
+    if (audioTrack && audioTrack.readyState === 'ended') {
+      console.log('Restarting audio track after tab became visible');
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+        
+        const newAudioTrack = newStream.getAudioTracks()[0];
+        this.localStream.removeTrack(audioTrack);
+        this.localStream.addTrack(newAudioTrack);
+        
+        // Setup ended handler for new track
+        newAudioTrack.onended = () => {
+          console.warn('Audio track ended unexpectedly');
+        };
+        
+        // Update peer connections
+        this.peers.forEach(peer => {
+          const sender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'audio');
+          if (sender) {
+            sender.replaceTrack(newAudioTrack).catch(e => {
+              console.error('Error replacing audio track:', e);
+            });
+          }
+        });
+        
+        console.log('Audio track restarted successfully');
+      } catch (error) {
+        console.error('Error restarting audio track:', error);
+      }
+    }
   }
 
   private joinRoom() {
@@ -345,13 +381,6 @@ export class WebRTCManager {
     // Handle incoming tracks
     peerConnection.ontrack = (event) => {
       console.log('Received remote track from:', peerId, 'kind:', event.track.kind);
-      
-      // Disable all audio tracks from remote peers - no one should hear anyone
-      if (event.track.kind === 'audio') {
-        event.track.enabled = false;
-        console.log('Muted audio track from peer:', peerId);
-      }
-      
       const peer = this.peers.get(peerId);
       if (peer) {
         if (!peer.stream) {
@@ -594,13 +623,10 @@ export class WebRTCManager {
     
     // If track exists and is enabled, turn it OFF
     if (videoTrack?.enabled) {
-      // Stop the track immediately to turn off the camera light
       videoTrack.stop();
       this.localStream.removeTrack(videoTrack);
       
-      console.log('Video track stopped and removed');
-      
-      // Update peer connections to remove video
+      // Update peer connections
       this.peers.forEach(peer => {
         const sender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
         if (sender) {
@@ -787,19 +813,15 @@ export class WebRTCManager {
       this.visibilityChangeHandler = null;
     }
 
-    // Stop local stream first - this ensures camera light turns off
-    if (this.localStream) {
-      this.localStream.getTracks().forEach(track => {
-        console.log('Stopping track:', track.kind, track.label);
-        track.stop();
-      });
-      this.localStream = null;
-    }
-
     // Close all peer connections
     this.peers.forEach(peer => {
       peer.peerConnection?.close();
     });
+
+    // Stop local stream
+    if (this.localStream) {
+      this.localStream.getTracks().forEach(track => track.stop());
+    }
 
     // Leave signaling channel
     if (this.channel) {

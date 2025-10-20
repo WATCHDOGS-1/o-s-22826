@@ -25,14 +25,12 @@ const StudyRoom = () => {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(true);
   const [currentStreak, setCurrentStreak] = useState(0);
+  const [sessionStartTime] = useState(Date.now());
   const [sessionDuration, setSessionDuration] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [todaysTotalMinutes, setTodaysTotalMinutes] = useState(0);
-  const [sessionStartTimestamp, setSessionStartTimestamp] = useState<number>(Date.now());
 
   const webrtcManager = useRef<WebRTCManager | null>(null);
-  const pauseStartTimeRef = useRef<number | null>(null);
-  const totalPausedTimeRef = useRef<number>(0);
   const userId = getUserId();
   const displayName = getDisplayName() || 'Anonymous';
 
@@ -63,33 +61,28 @@ const StudyRoom = () => {
 
     initializeRoom();
     loadUserStreak();
-    loadTimerState();
 
     return () => {
-      saveTimerState();
       if (webrtcManager.current) {
         webrtcManager.current.disconnect();
       }
     };
   }, [roomId, user]);
 
-  // Timer effect - runs continuously and calculates elapsed time
+  // Separate effect for timer to prevent re-initialization
   useEffect(() => {
     const timer = setInterval(() => {
       if (!isPaused) {
-        const now = Date.now();
-        const elapsed = Math.floor((now - sessionStartTimestamp - totalPausedTimeRef.current) / 1000);
-        setSessionDuration(elapsed);
+        setSessionDuration(prev => prev + 1);
       }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isPaused, sessionStartTimestamp]);
+  }, [isPaused]);
 
-  // Auto-save and state persistence
+  // Separate effect for auto-save
   useEffect(() => {
     const saveInterval = setInterval(async () => {
-      saveTimerState();
       const sessionMinutes = Math.floor(sessionDuration / 60);
       const totalMinutes = todaysTotalMinutes + sessionMinutes;
       if (sessionMinutes > 0) {
@@ -99,43 +92,6 @@ const StudyRoom = () => {
 
     return () => clearInterval(saveInterval);
   }, [sessionDuration, todaysTotalMinutes, userId, roomId]);
-
-  const loadTimerState = () => {
-    const storageKey = `study_timer_${userId}_${roomId}`;
-    const saved = localStorage.getItem(storageKey);
-    
-    if (saved) {
-      try {
-        const state = JSON.parse(saved);
-        setSessionStartTimestamp(state.sessionStartTimestamp);
-        setIsPaused(state.isPaused);
-        totalPausedTimeRef.current = state.totalPausedTime || 0;
-        
-        if (state.isPaused && state.pauseStartTime) {
-          pauseStartTimeRef.current = state.pauseStartTime;
-        }
-        
-        // Calculate current elapsed time
-        const now = Date.now();
-        const elapsed = Math.floor((now - state.sessionStartTimestamp - totalPausedTimeRef.current) / 1000);
-        setSessionDuration(Math.max(0, elapsed));
-      } catch (e) {
-        console.error('Error loading timer state:', e);
-      }
-    }
-  };
-
-  const saveTimerState = () => {
-    const storageKey = `study_timer_${userId}_${roomId}`;
-    const state = {
-      sessionStartTimestamp,
-      isPaused,
-      totalPausedTime: totalPausedTimeRef.current,
-      pauseStartTime: pauseStartTimeRef.current,
-      lastSaved: Date.now()
-    };
-    localStorage.setItem(storageKey, JSON.stringify(state));
-  };
 
   const loadUserStreak = async () => {
     await ensureUser(userId, displayName);
@@ -236,14 +192,11 @@ const StudyRoom = () => {
         description: 'Failed to connect to study room',
         variant: 'destructive',
       });
-      navigate('/home');
+      navigate('/');
     }
   };
 
   const handleLeaveRoom = async () => {
-    // Save timer state before leaving
-    saveTimerState();
-    
     // Calculate total study time for today
     const sessionMinutes = Math.floor(sessionDuration / 60);
     const totalMinutes = todaysTotalMinutes + sessionMinutes;
@@ -258,23 +211,11 @@ const StudyRoom = () => {
       });
     }
 
-    // Stop all media streams before disconnecting
-    if (localStream) {
-      localStream.getTracks().forEach(track => {
-        track.stop();
-        console.log('Stopped track:', track.kind);
-      });
-    }
-
     if (webrtcManager.current) {
       webrtcManager.current.disconnect();
     }
 
-    // Clear timer state from localStorage after leaving
-    const storageKey = `study_timer_${userId}_${roomId}`;
-    localStorage.removeItem(storageKey);
-
-    navigate('/home');
+    navigate('/');
   };
 
   const handleSignOut = async () => {
@@ -284,17 +225,8 @@ const StudyRoom = () => {
 
   const toggleVideo = async () => {
     if (webrtcManager.current) {
-      const newState = await webrtcManager.current.toggleVideo();
-      setVideoEnabled(newState);
-      
-      // Update local stream state
-      if (localStream) {
-        const videoTrack = localStream.getVideoTracks()[0];
-        if (!newState && videoTrack) {
-          videoTrack.stop();
-          console.log('Video track stopped');
-        }
-      }
+      const enabled = await webrtcManager.current.toggleVideo();
+      setVideoEnabled(enabled);
     }
   };
 
@@ -303,25 +235,6 @@ const StudyRoom = () => {
       const sharing = await webrtcManager.current.toggleScreenShare();
       setIsScreenSharing(sharing);
     }
-  };
-
-  const handlePauseToggle = () => {
-    const newPausedState = !isPaused;
-    setIsPaused(newPausedState);
-    
-    if (newPausedState) {
-      // Starting pause
-      pauseStartTimeRef.current = Date.now();
-    } else {
-      // Ending pause
-      if (pauseStartTimeRef.current) {
-        const pauseDuration = Date.now() - pauseStartTimeRef.current;
-        totalPausedTimeRef.current += pauseDuration;
-        pauseStartTimeRef.current = null;
-      }
-    }
-    
-    saveTimerState();
   };
 
   if (!user || isConnecting) {
@@ -403,7 +316,7 @@ const StudyRoom = () => {
             currentStreak={currentStreak} 
             sessionDuration={sessionDuration}
             todaysTotalMinutes={todaysTotalMinutes}
-            onPauseToggle={handlePauseToggle}
+            onPauseToggle={() => setIsPaused(!isPaused)}
             isPaused={isPaused}
           />
           <PomodoroTimer />

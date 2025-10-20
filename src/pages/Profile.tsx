@@ -29,7 +29,7 @@ const Profile = () => {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) {
-        navigate('/signin');
+        navigate('/auth');
       } else {
         setUser(session.user);
       }
@@ -37,7 +37,7 @@ const Profile = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!session) {
-        navigate('/signin');
+        navigate('/auth');
       } else {
         setUser(session.user);
       }
@@ -95,7 +95,7 @@ const Profile = () => {
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/home')}>
+          <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex-1">
@@ -203,7 +203,7 @@ const Profile = () => {
         </div>
 
         <div className="flex justify-center gap-4 mt-8">
-          <Button onClick={() => navigate('/home')} variant="outline">
+          <Button onClick={() => navigate('/')} variant="outline">
             Back to Home
           </Button>
           <Button onClick={() => navigate('/leaderboard')} variant="outline">

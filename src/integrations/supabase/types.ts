@@ -99,21 +99,18 @@ export type Database = {
           display_name: string | null
           id: string
           user_id: string
-          username: string | null
         }
         Insert: {
           created_at?: string | null
           display_name?: string | null
           id?: string
           user_id: string
-          username?: string | null
         }
         Update: {
           created_at?: string | null
           display_name?: string | null
           id?: string
           user_id?: string
-          username?: string | null
         }
         Relationships: []
       }
