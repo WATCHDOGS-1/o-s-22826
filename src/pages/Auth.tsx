@@ -81,7 +81,7 @@ const Auth = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-secondary p-4">
       <Card className="w-full max-w-md p-8">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-primary mb-2">OnlyFocus</h1>
+          <h1 className="text-4xl font-bold text-primary mb-2">OnlyStudies</h1>
           <p className="text-muted-foreground">Track your study sessions with friends</p>
         </div>
 

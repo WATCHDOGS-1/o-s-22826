@@ -47,7 +47,7 @@ const PomodoroTimer = () => {
       const newIsBreak = !isBreak;
       setIsBreak(newIsBreak);
       setTimeLeft(newIsBreak ? breakDuration * 60 : workDuration * 60);
-      // Keep timer active to auto-start break/work
+      setIsActive(false);
       
       toast({
         title: newIsBreak ? 'Break Time!' : 'Work Time!',

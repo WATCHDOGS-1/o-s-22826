@@ -199,7 +199,7 @@ const Profile = () => {
 
         {/* Progress Stats */}
         <div className="max-w-2xl mx-auto mb-8">
-          <ProgressStats userId={userId} />
+          <ProgressStats userId={user.id} />
         </div>
 
         <div className="flex justify-center gap-4 mt-8">
