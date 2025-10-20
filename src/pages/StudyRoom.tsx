@@ -28,7 +28,7 @@ const StudyRoom = () => {
   const [sessionStartTime] = useState(Date.now());
   const [sessionDuration, setSessionDuration] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const [todaysTotalMinutes, setTodaysTotalMinutes] = useState(0);
+  const [todaysInitialMinutes, setTodaysInitialMinutes] = useState(0);
 
   const webrtcManager = useRef<WebRTCManager | null>(null);
   const userId = getUserId();
@@ -83,15 +83,14 @@ const StudyRoom = () => {
   // Separate effect for auto-save
   useEffect(() => {
     const saveInterval = setInterval(async () => {
-      const sessionMinutes = Math.floor(sessionDuration / 60);
-      const totalMinutes = todaysTotalMinutes + sessionMinutes;
-      if (sessionMinutes > 0) {
+      const totalMinutes = Math.floor(sessionDuration / 60);
+      if (totalMinutes > todaysInitialMinutes) {
         await saveStudySession(userId, roomId!, totalMinutes);
       }
     }, 60000); // Every 60 seconds
 
     return () => clearInterval(saveInterval);
-  }, [sessionDuration, todaysTotalMinutes, userId, roomId]);
+  }, [sessionDuration, todaysInitialMinutes, userId, roomId]);
 
   const loadUserStreak = async () => {
     await ensureUser(userId, displayName);
@@ -117,10 +116,10 @@ const StudyRoom = () => {
         .maybeSingle();
       
       if (todaySession) {
-        setTodaysTotalMinutes(todaySession.minutes_studied);
+        const initialSeconds = todaySession.minutes_studied * 60;
+        setTodaysInitialMinutes(todaySession.minutes_studied);
+        setSessionDuration(initialSeconds);
       }
-      // Session duration always starts at 0 for new sessions
-      setSessionDuration(0);
     }
   };
 
@@ -166,12 +165,11 @@ const StudyRoom = () => {
   };
 
   const handleLeaveRoom = async () => {
-    // Calculate total study time for today
-    const sessionMinutes = Math.floor(sessionDuration / 60);
-    const totalMinutes = todaysTotalMinutes + sessionMinutes;
+    // Calculate total session duration
+    const totalMinutes = Math.floor(sessionDuration / 60);
 
-    // Save session if there was any study time in this session
-    if (sessionMinutes > 0) {
+    // Save session if more than initial
+    if (totalMinutes > todaysInitialMinutes) {
       await saveStudySession(userId, roomId!, totalMinutes);
 
       toast({
@@ -284,7 +282,6 @@ const StudyRoom = () => {
             isActive={!isPaused} 
             currentStreak={currentStreak} 
             sessionDuration={sessionDuration}
-            todaysTotalMinutes={todaysTotalMinutes}
             onPauseToggle={() => setIsPaused(!isPaused)}
             isPaused={isPaused}
           />
