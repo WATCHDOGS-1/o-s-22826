@@ -90,7 +90,7 @@ const Home = () => {
           <Card className="p-6 bg-card border-border text-center">
             <Users className="h-10 w-10 text-primary mx-auto mb-3" />
             <h3 className="font-semibold text-foreground mb-2">Video Rooms</h3>
-            <p className="text-sm text-muted-foreground">Study together with cameras</p>
+            <p className="text-sm text-muted-foreground">Study with up to 10 friends</p>
           </Card>
 
           <Card className="p-6 bg-card border-border text-center">
