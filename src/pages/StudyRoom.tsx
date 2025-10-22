@@ -25,10 +25,14 @@ const StudyRoom = () => {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(true);
   const [currentStreak, setCurrentStreak] = useState(0);
-  const [sessionStartTime] = useState(Date.now());
   const [sessionDuration, setSessionDuration] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [todaysTotalMinutes, setTodaysTotalMinutes] = useState(0);
+  const [sessionStartTimestamp, setSessionStartTimestamp] = useState<number>(Date.now());
 
   const webrtcManager = useRef<WebRTCManager | null>(null);
+  const pauseStartTimeRef = useRef<number | null>(null);
+  const totalPausedTimeRef = useRef<number>(0);
   const userId = getUserId();
   const displayName = getDisplayName() || 'Anonymous';
 
@@ -59,25 +63,139 @@ const StudyRoom = () => {
 
     initializeRoom();
     loadUserStreak();
-
-    // Timer to update session duration every second
-    const timer = setInterval(() => {
-      setSessionDuration(Math.floor((Date.now() - sessionStartTime) / 1000));
-    }, 1000);
+    loadTimerState();
 
     return () => {
-      clearInterval(timer);
+      saveTimerState();
       if (webrtcManager.current) {
         webrtcManager.current.disconnect();
       }
     };
   }, [roomId, user]);
 
+  // Timer effect - runs continuously and calculates elapsed time
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!isPaused) {
+        const now = Date.now();
+        const elapsed = Math.floor((now - sessionStartTimestamp - totalPausedTimeRef.current) / 1000);
+        setSessionDuration(elapsed);
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isPaused, sessionStartTimestamp]);
+
+  // Auto-save and state persistence
+  useEffect(() => {
+    const saveInterval = setInterval(async () => {
+      saveTimerState();
+      const sessionMinutes = Math.floor(sessionDuration / 60);
+      const totalMinutes = todaysTotalMinutes + sessionMinutes;
+      if (sessionMinutes > 0) {
+        await saveStudySession(userId, roomId!, totalMinutes);
+      }
+    }, 60000); // Every 60 seconds
+
+    return () => clearInterval(saveInterval);
+  }, [sessionDuration, todaysTotalMinutes, userId, roomId]);
+
+  const loadTimerState = () => {
+    const storageKey = `study_timer_${userId}_${roomId}`;
+    const saved = localStorage.getItem(storageKey);
+    
+    if (saved) {
+      try {
+        const state = JSON.parse(saved);
+        setSessionStartTimestamp(state.sessionStartTimestamp);
+        setIsPaused(state.isPaused);
+        totalPausedTimeRef.current = state.totalPausedTime || 0;
+        
+        if (state.isPaused && state.pauseStartTime) {
+          pauseStartTimeRef.current = state.pauseStartTime;
+        }
+        
+        // Calculate current elapsed time
+        const now = Date.now();
+        const elapsed = Math.floor((now - state.sessionStartTimestamp - totalPausedTimeRef.current) / 1000);
+        setSessionDuration(Math.max(0, elapsed));
+      } catch (e) {
+        console.error('Error loading timer state:', e);
+      }
+    }
+  };
+
+  const saveTimerState = () => {
+    const storageKey = `study_timer_${userId}_${roomId}`;
+    const state = {
+      sessionStartTimestamp,
+      isPaused,
+      totalPausedTime: totalPausedTimeRef.current,
+      pauseStartTime: pauseStartTimeRef.current,
+      lastSaved: Date.now()
+    };
+    localStorage.setItem(storageKey, JSON.stringify(state));
+  };
+
   const loadUserStreak = async () => {
     await ensureUser(userId, displayName);
     const stats = await getUserStats(userId);
     if (stats) {
       setCurrentStreak(stats.current_streak);
+    }
+    
+    // Load today's existing study time and session start
+    const { data: user } = await (supabase as any)
+      .from('users')
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle();
+    
+    if (user) {
+      const today = new Date().toISOString().split('T')[0];
+      const { data: todaySession } = await (supabase as any)
+        .from('study_sessions')
+        .select('minutes_studied, session_start')
+        .eq('user_id', user.id)
+        .eq('date', today)
+        .maybeSingle();
+      
+      if (todaySession) {
+        setTodaysTotalMinutes(todaySession.minutes_studied);
+        
+        // Calculate elapsed time from session_start if it exists
+        if (todaySession.session_start) {
+          const sessionStartTime = new Date(todaySession.session_start).getTime();
+          const now = Date.now();
+          const elapsedSeconds = Math.floor((now - sessionStartTime) / 1000);
+          setSessionDuration(elapsedSeconds);
+        } else {
+          // No session_start, this is a new session
+          setSessionDuration(0);
+          
+          // Update the session with session_start
+          await (supabase as any)
+            .from('study_sessions')
+            .update({ session_start: new Date().toISOString() })
+            .eq('user_id', user.id)
+            .eq('date', today);
+        }
+      } else {
+        // No session today, start fresh
+        setTodaysTotalMinutes(0);
+        setSessionDuration(0);
+        
+        // Create new session with session_start
+        await (supabase as any)
+          .from('study_sessions')
+          .insert({
+            user_id: user.id,
+            room_id: roomId,
+            date: today,
+            minutes_studied: 0,
+            session_start: new Date().toISOString()
+          });
+      }
     }
   };
 
@@ -118,21 +236,33 @@ const StudyRoom = () => {
         description: 'Failed to connect to study room',
         variant: 'destructive',
       });
-      navigate('/');
+      navigate('/home');
     }
   };
 
   const handleLeaveRoom = async () => {
-    // Calculate session duration
-    const sessionDuration = Math.floor((Date.now() - sessionStartTime) / 1000 / 60);
+    // Save timer state before leaving
+    saveTimerState();
+    
+    // Calculate total study time for today
+    const sessionMinutes = Math.floor(sessionDuration / 60);
+    const totalMinutes = todaysTotalMinutes + sessionMinutes;
 
-    // Save session if more than 1 minute
-    if (sessionDuration >= 1) {
-      await saveStudySession(userId, roomId!, sessionDuration);
+    // Save session if there was any study time in this session
+    if (sessionMinutes > 0) {
+      await saveStudySession(userId, roomId!, totalMinutes);
 
       toast({
         title: 'Session Saved',
-        description: `Studied for ${sessionDuration} minutes`,
+        description: `Total studied today: ${totalMinutes} minutes`,
+      });
+    }
+
+    // Stop all media streams before disconnecting
+    if (localStream) {
+      localStream.getTracks().forEach(track => {
+        track.stop();
+        console.log('Stopped track:', track.kind);
       });
     }
 
@@ -140,7 +270,11 @@ const StudyRoom = () => {
       webrtcManager.current.disconnect();
     }
 
-    navigate('/');
+    // Clear timer state from localStorage after leaving
+    const storageKey = `study_timer_${userId}_${roomId}`;
+    localStorage.removeItem(storageKey);
+
+    navigate('/home');
   };
 
   const handleSignOut = async () => {
@@ -150,8 +284,17 @@ const StudyRoom = () => {
 
   const toggleVideo = async () => {
     if (webrtcManager.current) {
-      const enabled = await webrtcManager.current.toggleVideo();
-      setVideoEnabled(enabled);
+      const newState = await webrtcManager.current.toggleVideo();
+      setVideoEnabled(newState);
+      
+      // Update local stream state
+      if (localStream) {
+        const videoTrack = localStream.getVideoTracks()[0];
+        if (!newState && videoTrack) {
+          videoTrack.stop();
+          console.log('Video track stopped');
+        }
+      }
     }
   };
 
@@ -160,6 +303,25 @@ const StudyRoom = () => {
       const sharing = await webrtcManager.current.toggleScreenShare();
       setIsScreenSharing(sharing);
     }
+  };
+
+  const handlePauseToggle = () => {
+    const newPausedState = !isPaused;
+    setIsPaused(newPausedState);
+    
+    if (newPausedState) {
+      // Starting pause
+      pauseStartTimeRef.current = Date.now();
+    } else {
+      // Ending pause
+      if (pauseStartTimeRef.current) {
+        const pauseDuration = Date.now() - pauseStartTimeRef.current;
+        totalPausedTimeRef.current += pauseDuration;
+        pauseStartTimeRef.current = null;
+      }
+    }
+    
+    saveTimerState();
   };
 
   if (!user || isConnecting) {
@@ -236,9 +398,16 @@ const StudyRoom = () => {
         </div>
 
         <div className="w-full lg:w-80 shrink-0 space-y-4">
-          <StudyTimer isActive={true} currentStreak={currentStreak} sessionDuration={sessionDuration} />
+          <StudyTimer 
+            isActive={!isPaused} 
+            currentStreak={currentStreak} 
+            sessionDuration={sessionDuration}
+            todaysTotalMinutes={todaysTotalMinutes}
+            onPauseToggle={handlePauseToggle}
+            isPaused={isPaused}
+          />
           <PomodoroTimer />
-          <ProgressStats userId={user.id} autoRefresh={true} />
+          <ProgressStats userId={userId} autoRefresh={true} />
         </div>
       </div>
     </div>

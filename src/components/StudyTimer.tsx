@@ -1,13 +1,17 @@
-import { Timer, Flame } from 'lucide-react';
+import { Timer, Flame, Pause, Play } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 interface StudyTimerProps {
   isActive: boolean;
   currentStreak: number;
   sessionDuration: number;
+  todaysTotalMinutes: number;
+  onPauseToggle?: () => void;
+  isPaused?: boolean;
 }
 
-const StudyTimer = ({ isActive, currentStreak, sessionDuration }: StudyTimerProps) => {
+const StudyTimer = ({ isActive, currentStreak, sessionDuration, todaysTotalMinutes, onPauseToggle, isPaused = false }: StudyTimerProps) => {
   const formatTime = (totalSeconds: number) => {
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -20,8 +24,10 @@ const StudyTimer = ({ isActive, currentStreak, sessionDuration }: StudyTimerProp
     };
   };
 
-  const time = formatTime(sessionDuration);
-  const totalMinutes = Math.floor(sessionDuration / 60);
+  // Calculate total time today (existing minutes + current session)
+  const totalSeconds = (todaysTotalMinutes * 60) + sessionDuration;
+  const time = formatTime(totalSeconds);
+  const totalMinutes = Math.floor(totalSeconds / 60);
 
   return (
     <Card className="p-6 bg-gradient-to-br from-card to-secondary border-border">
@@ -30,9 +36,26 @@ const StudyTimer = ({ isActive, currentStreak, sessionDuration }: StudyTimerProp
           <Timer className="h-5 w-5 text-primary" />
           <h3 className="font-semibold text-foreground">Study Timer</h3>
         </div>
-        <div className="flex items-center gap-2 bg-primary/20 px-3 py-1 rounded-full">
-          <Flame className="h-4 w-4 text-primary" />
-          <span className="text-sm font-bold text-primary">{currentStreak} day streak</span>
+        <div className="flex items-center gap-2">
+          {onPauseToggle && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onPauseToggle}
+              className="h-8 w-8"
+              title={isPaused ? "Resume" : "Pause"}
+            >
+              {isPaused ? (
+                <Play className="h-4 w-4 text-primary" />
+              ) : (
+                <Pause className="h-4 w-4 text-primary" />
+              )}
+            </Button>
+          )}
+          <div className="flex items-center gap-2 bg-primary/20 px-3 py-1 rounded-full">
+            <Flame className="h-4 w-4 text-primary" />
+            <span className="text-sm font-bold text-primary">{currentStreak} day streak</span>
+          </div>
         </div>
       </div>
 
@@ -45,8 +68,16 @@ const StudyTimer = ({ isActive, currentStreak, sessionDuration }: StudyTimerProp
           <span>{time.seconds}</span>
         </div>
         <p className="text-muted-foreground">
-          {totalMinutes} {totalMinutes === 1 ? 'minute' : 'minutes'} studied
+          {totalMinutes} {totalMinutes === 1 ? 'minute' : 'minutes'} studied today
         </p>
+        {todaysTotalMinutes > 0 && (
+          <p className="text-xs text-muted-foreground mt-1">
+            This session: {Math.floor(sessionDuration / 60)} minutes
+          </p>
+        )}
+        {isPaused && (
+          <p className="text-xs text-amber-500 animate-pulse mt-2">Paused</p>
+        )}
       </div>
     </Card>
   );

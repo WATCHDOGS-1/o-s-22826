@@ -21,6 +21,7 @@ export type Database = {
           id: string
           minutes_studied: number
           room_id: string
+          session_start: string | null
           started_at: string | null
           user_id: string | null
         }
@@ -30,6 +31,7 @@ export type Database = {
           id?: string
           minutes_studied?: number
           room_id: string
+          session_start?: string | null
           started_at?: string | null
           user_id?: string | null
         }
@@ -39,6 +41,7 @@ export type Database = {
           id?: string
           minutes_studied?: number
           room_id?: string
+          session_start?: string | null
           started_at?: string | null
           user_id?: string | null
         }
@@ -96,18 +99,21 @@ export type Database = {
           display_name: string | null
           id: string
           user_id: string
+          username: string | null
         }
         Insert: {
           created_at?: string | null
           display_name?: string | null
           id?: string
           user_id: string
+          username?: string | null
         }
         Update: {
           created_at?: string | null
           display_name?: string | null
           id?: string
           user_id?: string
+          username?: string | null
         }
         Relationships: []
       }

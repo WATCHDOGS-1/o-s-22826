@@ -5,25 +5,25 @@ export const generateUserId = (): string => {
 };
 
 export const getUserId = (): string => {
-  let userId = localStorage.getItem('onlystudies_user_id');
+  let userId = localStorage.getItem('onlyfocus_user_id');
   
   if (!userId) {
     userId = generateUserId();
-    localStorage.setItem('onlystudies_user_id', userId);
+    localStorage.setItem('onlyfocus_user_id', userId);
   }
   
   return userId;
 };
 
 export const getDisplayName = (): string | null => {
-  return localStorage.getItem('onlystudies_display_name');
+  return localStorage.getItem('onlyfocus_display_name');
 };
 
 export const setDisplayName = (name: string): void => {
-  localStorage.setItem('onlystudies_display_name', name);
+  localStorage.setItem('onlyfocus_display_name', name);
 };
 
 export const clearUserData = (): void => {
-  localStorage.removeItem('onlystudies_user_id');
-  localStorage.removeItem('onlystudies_display_name');
+  localStorage.removeItem('onlyfocus_user_id');
+  localStorage.removeItem('onlyfocus_display_name');
 };

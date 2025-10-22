@@ -14,21 +14,25 @@ const Home = () => {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user || null);
+      if (!session) {
+        navigate('/signin');
+      } else {
+        setUser(session.user);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user || null);
+      if (!session) {
+        navigate('/signin');
+      } else {
+        setUser(session.user);
+      }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [navigate]);
 
   const handleJoinRoom = () => {
-    if (!user) {
-      navigate('/auth');
-      return;
-    }
     if (displayNameInput.trim()) {
       setDisplayName(displayNameInput.trim());
     }
@@ -37,6 +41,7 @@ const Home = () => {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
+    navigate('/');
   };
 
   return (
@@ -46,7 +51,7 @@ const Home = () => {
         <header className="text-center mb-12">
           <div className="flex items-center justify-center gap-4 mb-4">
             <h1 className="text-6xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              OnlyStudies
+              OnlyFocus
             </h1>
             {user && (
               <Button variant="outline" size="sm" onClick={handleSignOut}>
@@ -80,7 +85,7 @@ const Home = () => {
               onClick={handleJoinRoom}
               className="w-full bg-primary hover:bg-primary/90 text-white font-semibold h-12"
             >
-              {user ? 'Join Global Study Room' : 'Sign In to Join'}
+              Join Global Study Room
             </Button>
           </div>
         </Card>
@@ -89,36 +94,54 @@ const Home = () => {
         <div className="grid md:grid-cols-4 gap-6 max-w-6xl mx-auto">
           <Card className="p-6 bg-card border-border text-center">
             <Users className="h-10 w-10 text-primary mx-auto mb-3" />
-            <h3 className="font-semibold text-foreground mb-2">Video Rooms</h3>
-            <p className="text-sm text-muted-foreground">Study with up to 10 friends</p>
+            <h3 className="font-semibold text-foreground mb-2">Live Webcam Rooms</h3>
+            <p className="text-sm text-muted-foreground">Study together in real-time with live video cameras for accountability and motivation in virtual coworking spaces</p>
           </Card>
 
           <Card className="p-6 bg-card border-border text-center">
             <Clock className="h-10 w-10 text-accent mx-auto mb-3" />
-            <h3 className="font-semibold text-foreground mb-2">Track Time</h3>
-            <p className="text-sm text-muted-foreground">Monitor your study sessions</p>
+            <h3 className="font-semibold text-foreground mb-2">Pomodoro Timer</h3>
+            <p className="text-sm text-muted-foreground">Track every study session with built-in focus timer. Your progress persists even when you refresh the page</p>
           </Card>
 
           <Card className="p-6 bg-card border-border text-center">
             <BookOpen className="h-10 w-10 text-primary mx-auto mb-3" />
-            <h3 className="font-semibold text-foreground mb-2">Build Streaks</h3>
-            <p className="text-sm text-muted-foreground">Study 25min+ daily</p>
+            <h3 className="font-semibold text-foreground mb-2">Daily Study Streaks</h3>
+            <p className="text-sm text-muted-foreground">Build consistency by studying 25+ minutes daily. Track your longest streak and stay motivated with habit building</p>
           </Card>
 
           <Card className="p-6 bg-card border-border text-center">
             <Trophy className="h-10 w-10 text-accent mx-auto mb-3" />
-            <h3 className="font-semibold text-foreground mb-2">Leaderboard</h3>
-            <p className="text-sm text-muted-foreground">Compete with others</p>
+            <h3 className="font-semibold text-foreground mb-2">Global Leaderboard</h3>
+            <p className="text-sm text-muted-foreground">Compete with students worldwide. See top performers by total study time and current streak length</p>
           </Card>
         </div>
 
         {/* Navigation */}
-        <div className="flex justify-center gap-4 mt-12">
-          <Button onClick={() => navigate('/leaderboard')} variant="outline">
-            View Leaderboard
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto mt-12">
+          <Button 
+            onClick={() => navigate('/leaderboard')} 
+            variant="outline"
+            className="h-16 flex flex-col items-center justify-center gap-1"
+          >
+            <Trophy className="h-5 w-5" />
+            <span>Leaderboard</span>
           </Button>
-          <Button onClick={() => navigate('/profile')} variant="outline">
-            My Profile
+          <Button 
+            onClick={() => navigate('/profile')} 
+            variant="outline"
+            className="h-16 flex flex-col items-center justify-center gap-1"
+          >
+            <Users className="h-5 w-5" />
+            <span>Goals & Progress</span>
+          </Button>
+          <Button 
+            onClick={() => navigate('/profile')} 
+            variant="outline"
+            className="h-16 flex flex-col items-center justify-center gap-1"
+          >
+            <BookOpen className="h-5 w-5" />
+            <span>My Stats</span>
           </Button>
         </div>
       </div>
