@@ -1,162 +1,95 @@
 import { supabase } from "@/integrations/supabase/client";
-import { Tables } from "@/integrations/supabase/types";
+import { UserProfile } from "@/contexts/AuthContext";
 
-type UserRow = Tables<'users'>;
-type FriendRequestRow = Tables<'friend_requests'>;
-
-export interface UserProfile {
-  id: string; // DB ID
-  user_id: string; // Auth ID
-  username: string;
+export interface PublicProfile extends UserProfile {
+  stats: {
+    total_minutes: number;
+    current_streak: number;
+    longest_streak: number;
+  };
+  followers_count: number;
+  following_count: number;
+  is_following: boolean;
 }
 
-export interface FriendRequest {
-  id: string;
-  from_user: UserProfile;
-  to_user: UserProfile;
-  status: FriendRequestRow['status'];
-  created_at: string;
-}
-
-export const searchUsers = async (query: string, currentUserId: string): Promise<UserProfile[]> => {
-  if (!query || query.length < 3) return [];
-
-  const { data, error } = await (supabase as any)
+export const getPublicProfile = async (username: string, currentAuthId?: string): Promise<PublicProfile | null> => {
+  const { data: profile, error } = await supabase
     .from('users')
-    .select('id, user_id, username')
-    .ilike('username', `%${query}%`)
-    .neq('user_id', currentUserId)
-    .limit(10);
+    .select('*, user_stats(*)')
+    .eq('username', username)
+    .single();
 
-  if (error) {
-    console.error('Error searching users:', error);
-    return [];
+  if (error || !profile) {
+    console.error('Error fetching public profile:', error);
+    return null;
   }
 
-  // Map data to UserProfile, ensuring display_name is removed
-  return data.map(u => ({
-    id: u.id,
-    user_id: u.user_id,
-    username: u.username,
-  })) as UserProfile[];
+  const { data: followerCount } = await supabase.rpc('count_followers', { p_user_id: profile.id });
+  const { data: followingCount } = await supabase.rpc('count_following', { p_user_id: profile.id });
+
+  let is_following = false;
+  if (currentAuthId) {
+    const { data: currentUser } = await supabase.from('users').select('id').eq('user_id', currentAuthId).single();
+    if (currentUser) {
+      const { data: follow } = await supabase
+        .from('followers')
+        .select('id')
+        .eq('follower_id', currentUser.id)
+        .eq('following_id', profile.id)
+        .maybeSingle();
+      is_following = !!follow;
+    }
+  }
+
+  return {
+    ...profile,
+    stats: profile.user_stats[0] || { total_minutes: 0, current_streak: 0, longest_streak: 0 },
+    followers_count: followerCount || 0,
+    following_count: followingCount || 0,
+    is_following,
+  };
 };
 
-export const sendFriendRequest = async (fromUserId: string, toUserId: string) => {
-  // Get DB IDs for both users
-  const { data: fromUser } = await (supabase as any).from('users').select('id').eq('user_id', fromUserId).single();
-  const { data: toUser } = await (supabase as any).from('users').select('id').eq('user_id', toUserId).single();
+export const followUser = async (followerAuthId: string, followingDbId: string) => {
+  const { data: follower } = await supabase.from('users').select('id').eq('user_id', followerAuthId).single();
+  if (!follower) throw new Error("Follower not found");
 
-  if (!fromUser || !toUser) throw new Error('User not found.');
+  const { error } = await supabase
+    .from('followers')
+    .insert({ follower_id: follower.id, following_id: followingDbId });
+  
+  if (error) throw error;
+};
 
-  // Check if request already exists (pending or accepted)
-  const { data: existingRequest } = await (supabase as any)
-    .from('friend_requests')
-    .select('id, status')
-    .or(`and(from_user_id.eq.${fromUser.id},to_user_id.eq.${toUser.id}),and(from_user_id.eq.${toUser.id},to_user_id.eq.${fromUser.id})`)
-    .in('status', ['PENDING', 'ACCEPTED'])
-    .maybeSingle();
+export const unfollowUser = async (followerAuthId: string, followingDbId: string) => {
+  const { data: follower } = await supabase.from('users').select('id').eq('user_id', followerAuthId).single();
+  if (!follower) throw new Error("Follower not found");
 
-  if (existingRequest) {
-    if (existingRequest.status === 'PENDING') {
-      throw new Error('Friend request already pending.');
-    }
-    if (existingRequest.status === 'ACCEPTED') {
-      throw new Error('You are already friends.');
-    }
-  }
-
-  const { error } = await (supabase as any)
-    .from('friend_requests')
-    .insert({
-      from_user_id: fromUser.id,
-      to_user_id: toUser.id,
-      status: 'PENDING'
-    });
+  const { error } = await supabase
+    .from('followers')
+    .delete()
+    .eq('follower_id', follower.id)
+    .eq('following_id', followingDbId);
 
   if (error) throw error;
 };
 
-export const getPendingRequests = async (currentUserId: string): Promise<FriendRequest[]> => {
-  const { data: currentUser } = await (supabase as any).from('users').select('id').eq('user_id', currentUserId).single();
-  if (!currentUser) return [];
-
-  const { data, error } = await (supabase as any)
-    .from('friend_requests')
-    .select(`
-      id, created_at, status,
-      from_user_id ( id, user_id, username ),
-      to_user_id ( id, user_id, username )
-    `)
-    .eq('to_user_id', currentUser.id)
-    .eq('status', 'PENDING');
-
-  if (error) {
-    console.error('Error fetching pending requests:', error);
-    return [];
-  }
-
-  return data.map((req: any) => ({
-    id: req.id,
-    created_at: req.created_at,
-    status: req.status,
-    from_user: req.from_user_id,
-    to_user: req.to_user_id,
-  }));
-};
-
-export const handleFriendRequest = async (requestId: string, action: 'ACCEPT' | 'REJECT', currentUserId: string) => {
-  const { data: request, error: fetchError } = await (supabase as any)
-    .from('friend_requests')
-    .select('id, from_user_id, to_user_id')
-    .eq('id', requestId)
-    .single();
-
-  if (fetchError || !request) throw new Error('Request not found.');
-
-  // 1. Update request status
-  await (supabase as any)
-    .from('friend_requests')
-    .update({ status: action === 'ACCEPT' ? 'ACCEPTED' : 'REJECTED' })
-    .eq('id', requestId);
-
-  if (action === 'ACCEPT') {
-    // 2. Create friendship entry (ensure user1_id < user2_id for uniqueness)
-    const user1_id = request.from_user_id < request.to_user_id ? request.from_user_id : request.to_user_id;
-    const user2_id = request.from_user_id < request.to_user_id ? request.to_user_id : request.from_user_id;
-
-    const { error: friendError } = await (supabase as any)
-      .from('friends')
-      .insert({ user1_id, user2_id });
-
-    if (friendError) throw friendError;
-  }
-};
-
-export const getFriends = async (currentUserId: string): Promise<UserProfile[]> => {
-  const { data: currentUser } = await (supabase as any).from('users').select('id').eq('user_id', currentUserId).single();
-  if (!currentUser) return [];
+export const getFollowers = async (userDbId: string) => {
+  const { data, error } = await supabase
+    .from('followers')
+    .select('users!follower_id(username, display_name)')
+    .eq('following_id', userDbId);
   
-  const dbId = currentUser.id;
+  if (error) throw error;
+  return data.map(item => item.users);
+};
 
-  const { data: friendships, error } = await (supabase as any)
-    .from('friends')
-    .select(`
-      user1_id ( id, user_id, username ),
-      user2_id ( id, user_id, username )
-    `)
-    .or(`user1_id.eq.${dbId},user2_id.eq.${dbId}`);
-
-  if (error) {
-    console.error('Error fetching friends:', error);
-    return [];
-  }
-
-  return friendships.map((f: any) => {
-    // Return the profile of the *other* user
-    if (f.user1_id.id === dbId) {
-      return f.user2_id;
-    } else {
-      return f.user1_id;
-    }
-  });
+export const getFollowing = async (userDbId: string) => {
+  const { data, error } = await supabase
+    .from('followers')
+    .select('users!following_id(username, display_name)')
+    .eq('follower_id', userDbId);
+  
+  if (error) throw error;
+  return data.map(item => item.users);
 };

@@ -1,69 +1,76 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ArrowLeft, User, Clock, Flame, Trophy, Users } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { ArrowLeft, User, Clock, Flame, Trophy, Users, Settings, Edit } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { getUserId } from '@/lib/userStorage';
-import { getUserStats, ensureUser, getDisplayUsername } from '@/lib/studyTracker';
+import { useAuth } from '@/contexts/AuthContext';
+import { getUserStats } from '@/lib/studyTracker';
+import { getFollowers, getFollowing } from '@/lib/social';
 import ProgressStats from '@/components/ProgressStats';
-import SocialManager from '@/components/SocialManager';
+import UserSettingsEditor from '@/components/UserSettingsEditor';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useToast } from '@/hooks/use-toast';
 
 const Profile = () => {
   const navigate = useNavigate();
-  
-  const [user, setUser] = useState<any>(null);
-  const [stats, setStats] = useState({
-    total_minutes: 0,
-    current_streak: 0,
-    longest_streak: 0,
-  });
+  const { user, profile, loading: authLoading } = useAuth();
+  const { toast } = useToast();
+
+  const [stats, setStats] = useState({ total_minutes: 0, current_streak: 0, longest_streak: 0 });
+  const [followers, setFollowers] = useState<{ username: string, display_name: string }[]>([]);
+  const [following, setFollowing] = useState<{ username: string, display_name: string }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [username, setUsernameState] = useState('Loading...');
 
-  const userId = getUserId();
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate('/signin');
-      } else {
-        setUser(session.user);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session) {
-        navigate('/signin');
-      } else {
-        setUser(session.user);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+  const [editDisplayName, setEditDisplayName] = useState('');
+  const [editBio, setEditBio] = useState('');
 
   useEffect(() => {
-    if (user) {
-      loadStats();
-      loadUsername();
+    if (!authLoading && !user) {
+      navigate('/signin');
     }
-  }, [user]);
+  }, [user, authLoading, navigate]);
 
-  const loadUsername = async () => {
-    const name = await getDisplayUsername(userId);
-    setUsernameState(name);
-  };
-
-  const loadStats = async () => {
-    setLoading(true);
-    await ensureUser(userId);
-    const userStats = await getUserStats(userId);
-    if (userStats) {
-      setStats(userStats);
+  useEffect(() => {
+    if (profile) {
+      setEditDisplayName(profile.display_name || '');
+      setEditBio(profile.bio || '');
     }
-    setLoading(false);
+  }, [profile]);
+
+  useEffect(() => {
+    const loadData = async () => {
+      if (user && profile) {
+        setLoading(true);
+        const [userStats, userFollowers, userFollowing] = await Promise.all([
+          getUserStats(user.id),
+          getFollowers(profile.id),
+          getFollowing(profile.id)
+        ]);
+        if (userStats) setStats(userStats);
+        setFollowers(userFollowers as any);
+        setFollowing(userFollowing as any);
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, [user, profile]);
+
+  const handleProfileUpdate = async () => {
+    if (!user) return;
+    const { error } = await supabase
+      .from('users')
+      .update({ display_name: editDisplayName, bio: editBio })
+      .eq('user_id', user.id);
+    
+    if (error) {
+      toast({ title: 'Error', description: 'Failed to update profile.', variant: 'destructive' });
+    } else {
+      toast({ title: 'Profile Updated', description: 'Your changes have been saved.' });
+    }
   };
 
   const formatMinutes = (minutes: number) => {
@@ -72,129 +79,80 @@ const Profile = () => {
     return `${hours}h ${mins}m`;
   };
 
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-pulse text-primary text-xl mb-4">Loading...</div>
-        </div>
-      </div>
-    );
+  if (authLoading || loading || !user || !profile) {
+    return <div className="min-h-screen bg-background flex items-center justify-center text-primary">Loading...</div>;
   }
 
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
         <div className="flex items-center gap-4 mb-8">
           <Button variant="ghost" size="icon" onClick={() => navigate('/home')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div className="flex-1">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              My Profile
-            </h1>
-            <p className="text-muted-foreground mt-2">User: {username}</p>
-          </div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">My Profile</h1>
         </div>
 
         <Tabs defaultValue="stats" className="max-w-2xl mx-auto">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="stats" className="flex items-center gap-2">
-              <Clock className="h-4 w-4" /> Stats & Goals
-            </TabsTrigger>
-            <TabsTrigger value="social" className="flex items-center gap-2">
-              <Users className="h-4 w-4" /> Social
-            </TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="stats">Stats & Progress</TabsTrigger>
+            <TabsTrigger value="social">Social</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
           
           <TabsContent value="stats" className="mt-6 space-y-8">
-            {/* Profile Card (Stats Summary) */}
             <Card className="p-8 bg-gradient-to-br from-card to-secondary border-border">
               <div className="flex items-center gap-6 mb-8">
                 <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center">
                   <User className="h-10 w-10 text-primary" />
                 </div>
-                <div className="flex-1">
-                  <h2 className="text-2xl font-bold text-foreground">
-                    {username}
-                  </h2>
-                  <p className="text-sm text-muted-foreground">User ID: {userId}</p>
+                <div>
+                  <h2 className="text-2xl font-bold text-foreground">{profile.display_name}</h2>
+                  <p className="text-sm text-muted-foreground">@{profile.username}</p>
                 </div>
               </div>
-
-              {loading ? (
-                <div className="text-center py-12">
-                  <div className="animate-pulse text-muted-foreground">Loading stats...</div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {/* Total Time */}
-                  <div className="text-center p-6 bg-background/50 rounded-lg border border-border">
-                    <Clock className="h-8 w-8 text-primary mx-auto mb-3" />
-                    <div className="text-3xl font-bold text-primary mb-1">
-                      {formatMinutes(stats.total_minutes)}
-                    </div>
-                    <p className="text-sm text-muted-foreground">Total Study Time</p>
-                  </div>
-
-                  {/* Current Streak */}
-                  <div className="text-center p-6 bg-background/50 rounded-lg border border-border">
-                    <Flame className="h-8 w-8 text-accent mx-auto mb-3" />
-                    <div className="text-3xl font-bold text-accent mb-1">
-                      {stats.current_streak}
-                    </div>
-                    <p className="text-sm text-muted-foreground">Day Streak</p>
-                  </div>
-
-                  {/* Longest Streak */}
-                  <div className="text-center p-6 bg-background/50 rounded-lg border border-border">
-                    <Trophy className="h-8 w-8 text-primary mx-auto mb-3" />
-                    <div className="text-3xl font-bold text-primary mb-1">
-                      {stats.longest_streak}
-                    </div>
-                    <p className="text-sm text-muted-foreground">Longest Streak</p>
-                  </div>
-                </div>
-              )}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="text-center p-4 bg-background/50 rounded-lg border"><Clock className="h-7 w-7 text-primary mx-auto mb-2" /><div className="text-2xl font-bold">{formatMinutes(stats.total_minutes)}</div><p className="text-xs text-muted-foreground">Total Time</p></div>
+                <div className="text-center p-4 bg-background/50 rounded-lg border"><Flame className="h-7 w-7 text-accent mx-auto mb-2" /><div className="text-2xl font-bold">{stats.current_streak}</div><p className="text-xs text-muted-foreground">Day Streak</p></div>
+                <div className="text-center p-4 bg-background/50 rounded-lg border"><Trophy className="h-7 w-7 text-primary mx-auto mb-2" /><div className="text-2xl font-bold">{stats.longest_streak}</div><p className="text-xs text-muted-foreground">Longest Streak</p></div>
+              </div>
             </Card>
+            <ProgressStats userId={user.id} />
+          </TabsContent>
 
-            {/* Progress Stats */}
-            <ProgressStats userId={userId} />
-
-            {/* Info Card */}
-            <Card className="p-6 bg-card border-border">
-              <h3 className="font-semibold text-foreground mb-4">How Streaks Work</h3>
-              <ul className="space-y-2 text-muted-foreground">
-                <li className="flex items-start gap-2">
-                  <span className="text-primary">•</span>
-                  <span>Study for at least 25 minutes per day to maintain your streak</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-primary">•</span>
-                  <span>Your current streak resets if you miss a day</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-primary">•</span>
-                  <span>Compete on the leaderboard by studying more each week</span>
-                </li>
-              </ul>
+          <TabsContent value="social" className="mt-6 space-y-6">
+            <Card className="p-6">
+              <h3 className="font-semibold mb-4">{followers.length} Followers</h3>
+              <div className="space-y-2">
+                {followers.map(f => <Link to={`/profile/${f.username}`} key={f.username} className="block p-2 bg-secondary rounded hover:bg-secondary/80">{f.display_name || f.username}</Link>)}
+              </div>
+            </Card>
+            <Card className="p-6">
+              <h3 className="font-semibold mb-4">{following.length} Following</h3>
+              <div className="space-y-2">
+                {following.map(f => <Link to={`/profile/${f.username}`} key={f.username} className="block p-2 bg-secondary rounded hover:bg-secondary/80">{f.display_name || f.username}</Link>)}
+              </div>
             </Card>
           </TabsContent>
 
-          <TabsContent value="social" className="mt-6">
-            <SocialManager />
+          <TabsContent value="settings" className="mt-6 space-y-6">
+            <Card className="p-6">
+              <h3 className="font-semibold mb-4 flex items-center gap-2"><Edit className="h-4 w-4" /> Edit Public Profile</h3>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="displayName">Display Name</Label>
+                  <Input id="displayName" value={editDisplayName} onChange={e => setEditDisplayName(e.target.value)} />
+                </div>
+                <div>
+                  <Label htmlFor="bio">Bio</Label>
+                  <Textarea id="bio" value={editBio} onChange={e => setEditBio(e.target.value)} placeholder="Tell us about yourself..." />
+                </div>
+                <Button onClick={handleProfileUpdate}>Save Profile</Button>
+              </div>
+            </Card>
+            <UserSettingsEditor userId={user.id} />
           </TabsContent>
         </Tabs>
-
-        <div className="flex justify-center gap-4 mt-8">
-          <Button onClick={() => navigate('/home')} variant="outline">
-            Back to Home
-          </Button>
-          <Button onClick={() => navigate('/leaderboard')} variant="outline">
-            View Leaderboard
-          </Button>
-        </div>
       </div>
     </div>
   );

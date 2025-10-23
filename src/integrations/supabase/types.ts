@@ -7,125 +7,45 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "13.0.5"
   }
   public: {
     Tables: {
-      friend_requests: {
+      followers: {
         Row: {
-          created_at: string
-          from_user_id: string
           id: string
-          status: Database["public"]["Enums"]["request_status"]
-          to_user_id: string
+          follower_id: string
+          following_id: string
+          created_at: string
         }
         Insert: {
-          created_at?: string
-          from_user_id: string
           id?: string
-          status?: Database["public"]["Enums"]["request_status"]
-          to_user_id: string
+          follower_id: string
+          following_id: string
+          created_at?: string
         }
         Update: {
-          created_at?: string
-          from_user_id?: string
           id?: string
-          status?: Database["public"]["Enums"]["request_status"]
-          to_user_id?: string
+          follower_id?: string
+          following_id?: string
+          created_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "friend_requests_from_user_id_fkey"
-            columns: ["from_user_id"]
+            foreignKeyName: "followers_follower_id_fkey"
+            columns: ["follower_id"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "friend_requests_to_user_id_fkey"
-            columns: ["to_user_id"]
+            foreignKeyName: "followers_following_id_fkey"
+            columns: ["following_id"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
-          },
-        ]
-      }
-      friends: {
-        Row: {
-          created_at: string
-          id: string
-          user1_id: string
-          user2_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          user1_id: string
-          user2_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          user1_id?: string
-          user2_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "friends_user1_id_fkey"
-            columns: ["user1_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "friends_user2_id_fkey"
-            columns: ["user2_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      private_chats: {
-        Row: {
-          content: string
-          created_at: string
-          id: string
-          receiver_id: string
-          sender_id: string
-        }
-        Insert: {
-          content: string
-          created_at?: string
-          id?: string
-          receiver_id: string
-          sender_id: string
-        }
-        Update: {
-          content?: string
-          created_at?: string
-          id?: string
-          receiver_id?: string
-          sender_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "private_chats_receiver_id_fkey"
-            columns: ["receiver_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "private_chats_sender_id_fkey"
-            columns: ["sender_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
+          }
         ]
       }
       study_sessions: {
@@ -167,6 +87,47 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      user_settings: {
+        Row: {
+            id: string;
+            user_id: string;
+            daily_goal_minutes: number;
+            weekly_goal_minutes: number;
+            monthly_goal_minutes: number;
+            pomodoro_work_minutes: number;
+            pomodoro_break_minutes: number;
+            streak_maintenance_minutes: number;
+        };
+        Insert: {
+            id?: string;
+            user_id: string;
+            daily_goal_minutes?: number;
+            weekly_goal_minutes?: number;
+            monthly_goal_minutes?: number;
+            pomodoro_work_minutes?: number;
+            pomodoro_break_minutes?: number;
+            streak_maintenance_minutes?: number;
+        };
+        Update: {
+            id?: string;
+            user_id?: string;
+            daily_goal_minutes?: number;
+            weekly_goal_minutes?: number;
+            monthly_goal_minutes?: number;
+            pomodoro_work_minutes?: number;
+            pomodoro_break_minutes?: number;
+            streak_maintenance_minutes?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "user_settings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
         ]
       }
       user_stats: {
@@ -212,19 +173,25 @@ export type Database = {
           created_at: string | null
           id: string
           user_id: string
-          username: string | null
+          username: string
+          display_name: string | null
+          bio: string | null
         }
         Insert: {
           created_at?: string | null
           id?: string
           user_id: string
-          username?: string | null
+          username: string
+          display_name?: string | null
+          bio?: string | null
         }
         Update: {
           created_at?: string | null
           id?: string
           user_id?: string
-          username?: string | null
+          username?: string
+          display_name?: string | null
+          bio?: string | null
         }
         Relationships: []
       }
@@ -243,7 +210,7 @@ export type Database = {
       }
     }
     Enums: {
-      request_status: "PENDING" | "ACCEPTED" | "REJECTED"
+      [_ in never]: never
     }
     CompositeTypes: {
       [_ in never]: never
@@ -367,11 +334,3 @@ export type CompositeTypes<
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
-
-export const Constants = {
-  public: {
-    Enums: {
-      request_status: ["PENDING", "ACCEPTED", "REJECTED"] as const,
-    },
-  },
-} as const

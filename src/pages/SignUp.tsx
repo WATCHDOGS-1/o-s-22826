@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { z } from 'zod';
+import { useAuth } from '@/contexts/AuthContext';
 
 const signupSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').max(20, 'Username must be less than 20 characters').regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores'),
@@ -21,22 +22,13 @@ const SignUp = () => {
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        navigate('/home');
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        navigate('/home');
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+    if (!authLoading && user) {
+      navigate('/home');
+    }
+  }, [user, authLoading, navigate]);
 
   const checkUsernameAvailability = async (username: string): Promise<boolean> => {
     const { data, error } = await supabase
@@ -72,7 +64,8 @@ const SignUp = () => {
         options: {
           emailRedirectTo: `${window.location.origin}/`,
           data: {
-            username: validated.username
+            username: validated.username,
+            display_name: validated.username,
           }
         }
       });
@@ -94,6 +87,7 @@ const SignUp = () => {
           title: 'Success',
           description: 'Account created successfully!'
         });
+        // The auth listener will redirect to /home
       }
     } catch (error: any) {
       if (error instanceof z.ZodError) {

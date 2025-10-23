@@ -1,44 +1,45 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Trophy, ArrowLeft, Clock, Medal } from 'lucide-react';
 import { getWeeklyLeaderboard } from '@/lib/studyTracker';
-import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface LeaderboardEntry {
   user_id: string;
   display_name: string;
+  username: string;
   total_minutes: number;
 }
 
 const Leaderboard = () => {
   const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate('/signin');
-      } else {
-        loadLeaderboard();
-      }
-    });
+    if (!authLoading && !user) {
+      navigate('/signin');
+    }
+  }, [user, authLoading, navigate]);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session) {
-        navigate('/signin');
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+  useEffect(() => {
+    if (user) {
+      loadLeaderboard();
+    }
+  }, [user]);
 
   const loadLeaderboard = async () => {
     setLoading(true);
     const data = await getWeeklyLeaderboard();
-    setLeaderboard(data as LeaderboardEntry[]);
+    // The RPC function needs to be updated to return username
+    const formattedData = data.map((d: any) => ({
+      ...d,
+      username: d.username || d.user_id, // fallback
+    }));
+    setLeaderboard(formattedData as LeaderboardEntry[]);
     setLoading(false);
   };
 
@@ -55,10 +56,13 @@ const Leaderboard = () => {
     return null;
   };
 
+  if (authLoading) {
+    return <div className="min-h-screen bg-background flex items-center justify-center text-primary">Loading...</div>;
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
         <div className="flex items-center gap-4 mb-8">
           <Button variant="ghost" size="icon" onClick={() => navigate('/home')}>
             <ArrowLeft className="h-5 w-5" />
@@ -72,33 +76,25 @@ const Leaderboard = () => {
           <Trophy className="h-12 w-12 text-primary" />
         </div>
 
-        {/* Leaderboard */}
         <Card className="max-w-3xl mx-auto bg-gradient-to-br from-card to-secondary border-border">
           {loading ? (
-            <div className="p-12 text-center">
-              <div className="animate-pulse text-muted-foreground">Loading leaderboard...</div>
-            </div>
-          ) : leaderboard.length === 0 ? (
-            <div className="p-12 text-center">
-              <Trophy className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No data yet. Be the first to study!</p>
-            </div>
+            <div className="p-12 text-center text-muted-foreground">Loading leaderboard...</div>
           ) : (
             <div className="divide-y divide-border">
               {leaderboard.map((entry, index) => (
                 <div
                   key={entry.user_id}
-                  className={`p-6 flex items-center gap-4 hover:bg-secondary/50 transition-colors ${
-                    index < 3 ? 'bg-primary/5' : ''
-                  }`}
+                  className="p-6 flex items-center gap-4 hover:bg-secondary/50 transition-colors"
                 >
-                  <div className="flex items-center justify-center w-12 h-12 rounded-full bg-secondary font-bold text-lg">
+                  <div className="flex items-center justify-center w-12 font-bold text-lg">
                     {getMedalIcon(index) || <span className="text-muted-foreground">#{index + 1}</span>}
                   </div>
 
                   <div className="flex-1">
-                    <p className="font-semibold text-foreground">{entry.display_name}</p>
-                    <p className="text-sm text-muted-foreground">User ID: {entry.user_id}</p>
+                    <Link to={`/profile/${entry.username}`} className="font-semibold text-foreground hover:underline">
+                      {entry.display_name}
+                    </Link>
+                    <p className="text-sm text-muted-foreground">@{entry.username}</p>
                   </div>
 
                   <div className="flex items-center gap-2 bg-primary/10 px-4 py-2 rounded-lg">
@@ -110,12 +106,6 @@ const Leaderboard = () => {
             </div>
           )}
         </Card>
-
-        <div className="text-center mt-8">
-          <Button onClick={() => navigate('/home')} variant="outline">
-            Back to Home
-          </Button>
-        </div>
       </div>
     </div>
   );
