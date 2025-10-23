@@ -1,30 +1,41 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { BookOpen, Users, Trophy, Clock, LogOut } from 'lucide-react';
+import { setDisplayName } from '@/lib/userStorage';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext'; // Import useAuth
 
 const Home = () => {
   const navigate = useNavigate();
-  const { user, profile, loading: authLoading } = useAuth(); // Use useAuth hook
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<any>(null);
+  const [displayNameInput, setDisplayNameInput] = useState('');
 
   useEffect(() => {
-    if (!authLoading) {
-      if (!user) {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
         navigate('/signin');
-      } else if (!profile?.username) {
-        // If user is logged in but profile or username is missing (common for OAuth users)
-        navigate('/setup-username');
       } else {
-        setLoading(false);
+        setUser(session.user);
       }
-    }
-  }, [user, profile, authLoading, navigate]);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!session) {
+        navigate('/signin');
+      } else {
+        setUser(session.user);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
 
   const handleJoinRoom = () => {
+    if (displayNameInput.trim()) {
+      setDisplayName(displayNameInput.trim());
+    }
     navigate('/study/global-room');
   };
 
@@ -32,10 +43,6 @@ const Home = () => {
     await supabase.auth.signOut();
     navigate('/');
   };
-
-  if (authLoading || loading) {
-    return <div className="min-h-screen bg-background flex items-center justify-center text-primary">Loading...</div>;
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -61,9 +68,19 @@ const Home = () => {
         {/* Main Card */}
         <Card className="max-w-lg mx-auto p-8 bg-gradient-to-br from-card to-secondary border-border mb-12">
           <div className="space-y-6">
-            <p className="text-sm text-muted-foreground text-center">
-              You will join the room using your permanent username: <span className="font-bold text-foreground">@{profile?.username}</span>
-            </p>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">
+                Display Name (optional)
+              </label>
+              <Input
+                type="text"
+                placeholder="Enter your name"
+                value={displayNameInput}
+                onChange={(e) => setDisplayNameInput(e.target.value)}
+                className="w-full"
+              />
+            </div>
+
             <Button
               onClick={handleJoinRoom}
               className="w-full bg-primary hover:bg-primary/90 text-white font-semibold h-12"

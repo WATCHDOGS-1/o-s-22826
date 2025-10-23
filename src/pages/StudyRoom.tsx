@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { LogOut, Video, VideoOff } from 'lucide-react';
+import { LogOut, Video, VideoOff, Monitor } from 'lucide-react';
+import { getUserId, getDisplayName } from '@/lib/userStorage';
 import { WebRTCManager, Peer } from '@/lib/webrtc';
-import { saveStudySession, ensureUser, getUserStats, getDisplayUsername } from '@/lib/studyTracker';
+import { saveStudySession, ensureUser, getUserStats } from '@/lib/studyTracker';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import VideoGrid from '@/components/VideoGrid';
@@ -20,18 +21,20 @@ const StudyRoom = () => {
   const [user, setUser] = useState<any>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [peers, setPeers] = useState<Peer[]>([]);
-  const [videoEnabled, setVideoEnabled] = useState(false);
+  const [videoEnabled, setVideoEnabled] = useState(true);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(true);
   const [currentStreak, setCurrentStreak] = useState(0);
   const [sessionDuration, setSessionDuration] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [todaysTotalMinutes, setTodaysTotalMinutes] = useState(0);
   const [sessionStartTimestamp, setSessionStartTimestamp] = useState<number>(Date.now());
-  const [username, setUsernameState] = useState('Anonymous');
 
   const webrtcManager = useRef<WebRTCManager | null>(null);
   const pauseStartTimeRef = useRef<number | null>(null);
   const totalPausedTimeRef = useRef<number>(0);
+  const userId = getUserId();
+  const displayName = getDisplayName() || 'Anonymous';
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -57,22 +60,13 @@ const StudyRoom = () => {
     if (!roomId || !user) {
       return;
     }
-    const userId = user.id;
 
-    loadTimerState(userId);
-    
-    const fullInitialization = async () => {
-        const name = await getDisplayUsername(userId);
-        setUsernameState(name);
-        
-        await loadUserStreak(userId);
-        await initializeRoom(name, userId);
-    };
-    
-    fullInitialization();
+    initializeRoom();
+    loadUserStreak();
+    loadTimerState();
 
     return () => {
-      saveTimerState(user.id);
+      saveTimerState();
       if (webrtcManager.current) {
         webrtcManager.current.disconnect();
       }
@@ -84,9 +78,8 @@ const StudyRoom = () => {
     const timer = setInterval(() => {
       if (!isPaused) {
         const now = Date.now();
-        // Calculate elapsed time since session start, minus total accumulated pause time
         const elapsed = Math.floor((now - sessionStartTimestamp - totalPausedTimeRef.current) / 1000);
-        setSessionDuration(Math.max(0, elapsed));
+        setSessionDuration(elapsed);
       }
     }, 1000);
 
@@ -96,41 +89,46 @@ const StudyRoom = () => {
   // Auto-save and state persistence
   useEffect(() => {
     const saveInterval = setInterval(async () => {
-      if (!user) return;
-      saveTimerState(user.id);
+      saveTimerState();
       const sessionMinutes = Math.floor(sessionDuration / 60);
       const totalMinutes = todaysTotalMinutes + sessionMinutes;
-      if (totalMinutes > 0) {
-        await saveStudySession(user.id, roomId!, totalMinutes);
+      if (sessionMinutes > 0) {
+        await saveStudySession(userId, roomId!, totalMinutes);
       }
     }, 60000); // Every 60 seconds
 
     return () => clearInterval(saveInterval);
-  }, [sessionDuration, todaysTotalMinutes, user, roomId]);
+  }, [sessionDuration, todaysTotalMinutes, userId, roomId]);
 
-  const loadTimerState = (userId: string) => {
+  const loadTimerState = () => {
     const storageKey = `study_timer_${userId}_${roomId}`;
     const saved = localStorage.getItem(storageKey);
     
     if (saved) {
       try {
         const state = JSON.parse(saved);
-        // Only load pause state and paused time from local storage
+        setSessionStartTimestamp(state.sessionStartTimestamp);
         setIsPaused(state.isPaused);
         totalPausedTimeRef.current = state.totalPausedTime || 0;
         
         if (state.isPaused && state.pauseStartTime) {
           pauseStartTimeRef.current = state.pauseStartTime;
         }
+        
+        // Calculate current elapsed time
+        const now = Date.now();
+        const elapsed = Math.floor((now - state.sessionStartTimestamp - totalPausedTimeRef.current) / 1000);
+        setSessionDuration(Math.max(0, elapsed));
       } catch (e) {
         console.error('Error loading timer state:', e);
       }
     }
   };
 
-  const saveTimerState = (userId: string) => {
+  const saveTimerState = () => {
     const storageKey = `study_timer_${userId}_${roomId}`;
     const state = {
+      sessionStartTimestamp,
       isPaused,
       totalPausedTime: totalPausedTimeRef.current,
       pauseStartTime: pauseStartTimeRef.current,
@@ -139,14 +137,14 @@ const StudyRoom = () => {
     localStorage.setItem(storageKey, JSON.stringify(state));
   };
 
-  const loadUserStreak = async (userId: string) => {
-    await ensureUser(userId); // Ensure user exists
+  const loadUserStreak = async () => {
+    await ensureUser(userId, displayName);
     const stats = await getUserStats(userId);
     if (stats) {
       setCurrentStreak(stats.current_streak);
     }
     
-    // Load today's existing study time and session start from DB
+    // Load today's existing study time and session start
     const { data: user } = await (supabase as any)
       .from('users')
       .select('id')
@@ -162,29 +160,23 @@ const StudyRoom = () => {
         .eq('date', today)
         .maybeSingle();
       
-      const totalPausedTime = totalPausedTimeRef.current; // Use locally loaded pause time
-
       if (todaySession) {
         setTodaysTotalMinutes(todaySession.minutes_studied);
         
+        // Calculate elapsed time from session_start if it exists
         if (todaySession.session_start) {
           const sessionStartTime = new Date(todaySession.session_start).getTime();
-          setSessionStartTimestamp(sessionStartTime); 
-          
           const now = Date.now();
-          // Calculate elapsed time since DB session start, minus accumulated pause time
-          const elapsedSeconds = Math.floor((now - sessionStartTime - totalPausedTime) / 1000);
-          setSessionDuration(Math.max(0, elapsedSeconds));
+          const elapsedSeconds = Math.floor((now - sessionStartTime) / 1000);
+          setSessionDuration(elapsedSeconds);
         } else {
-          // Should not happen if session is created correctly, but handle it by setting new start time
-          const newSessionStart = new Date().toISOString();
-          const newSessionStartTimestamp = new Date(newSessionStart).getTime();
-          setSessionStartTimestamp(newSessionStartTimestamp);
+          // No session_start, this is a new session
           setSessionDuration(0);
           
+          // Update the session with session_start
           await (supabase as any)
             .from('study_sessions')
-            .update({ session_start: newSessionStart })
+            .update({ session_start: new Date().toISOString() })
             .eq('user_id', user.id)
             .eq('date', today);
         }
@@ -193,10 +185,7 @@ const StudyRoom = () => {
         setTodaysTotalMinutes(0);
         setSessionDuration(0);
         
-        const newSessionStart = new Date().toISOString();
-        const newSessionStartTimestamp = new Date(newSessionStart).getTime();
-        setSessionStartTimestamp(newSessionStartTimestamp);
-        
+        // Create new session with session_start
         await (supabase as any)
           .from('study_sessions')
           .insert({
@@ -204,21 +193,24 @@ const StudyRoom = () => {
             room_id: roomId,
             date: today,
             minutes_studied: 0,
-            session_start: newSessionStart
+            session_start: new Date().toISOString()
           });
       }
     }
   };
 
-  const initializeRoom = async (currentUsername: string, userId: string) => {
+  const initializeRoom = async () => {
     try {
       setIsConnecting(true);
+
+      // Ensure user exists in database
+      await ensureUser(userId, displayName);
 
       // Initialize WebRTC
       webrtcManager.current = new WebRTCManager(
         roomId!,
         userId,
-        currentUsername, // Use username as display name
+        displayName,
         (updatedPeers) => {
           setPeers(updatedPeers);
         }
@@ -249,17 +241,16 @@ const StudyRoom = () => {
   };
 
   const handleLeaveRoom = async () => {
-    if (!user) return;
     // Save timer state before leaving
-    saveTimerState(user.id);
+    saveTimerState();
     
     // Calculate total study time for today
     const sessionMinutes = Math.floor(sessionDuration / 60);
     const totalMinutes = todaysTotalMinutes + sessionMinutes;
 
     // Save session if there was any study time in this session
-    if (totalMinutes > 0) {
-      await saveStudySession(user.id, roomId!, totalMinutes);
+    if (sessionMinutes > 0) {
+      await saveStudySession(userId, roomId!, totalMinutes);
 
       toast({
         title: 'Session Saved',
@@ -268,12 +259,19 @@ const StudyRoom = () => {
     }
 
     // Stop all media streams before disconnecting
+    if (localStream) {
+      localStream.getTracks().forEach(track => {
+        track.stop();
+        console.log('Stopped track:', track.kind);
+      });
+    }
+
     if (webrtcManager.current) {
       webrtcManager.current.disconnect();
     }
 
     // Clear timer state from localStorage after leaving
-    const storageKey = `study_timer_${user.id}_${roomId}`;
+    const storageKey = `study_timer_${userId}_${roomId}`;
     localStorage.removeItem(storageKey);
 
     navigate('/home');
@@ -288,8 +286,22 @@ const StudyRoom = () => {
     if (webrtcManager.current) {
       const newState = await webrtcManager.current.toggleVideo();
       setVideoEnabled(newState);
-      // Crucial: Update localStream state to force VideoGrid re-render and update video element srcObject
-      setLocalStream(webrtcManager.current.getLocalStream());
+      
+      // Update local stream state
+      if (localStream) {
+        const videoTrack = localStream.getVideoTracks()[0];
+        if (!newState && videoTrack) {
+          videoTrack.stop();
+          console.log('Video track stopped');
+        }
+      }
+    }
+  };
+
+  const toggleScreenShare = async () => {
+    if (webrtcManager.current) {
+      const sharing = await webrtcManager.current.toggleScreenShare();
+      setIsScreenSharing(sharing);
     }
   };
 
@@ -309,9 +321,7 @@ const StudyRoom = () => {
       }
     }
     
-    if (user) {
-      saveTimerState(user.id);
-    }
+    saveTimerState();
   };
 
   if (!user || isConnecting) {
@@ -344,7 +354,16 @@ const StudyRoom = () => {
               >
                 {videoEnabled ? <Video className="h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5" /> : <VideoOff className="h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5" />}
               </Button>
-              <ChatRoom roomId={roomId!} userId={user.id} username={username} />
+              <Button 
+                variant={isScreenSharing ? "default" : "ghost"} 
+                size="icon" 
+                className="h-7 w-7 sm:h-9 sm:w-9 md:h-10 md:w-10 touch-manipulation" 
+                onClick={toggleScreenShare}
+                title={isScreenSharing ? "Stop sharing" : "Share screen"}
+              >
+                <Monitor className="h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5" />
+              </Button>
+              <ChatRoom roomId={roomId!} userId={userId} displayName={displayName} />
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -373,9 +392,8 @@ const StudyRoom = () => {
           <VideoGrid 
             localStream={localStream}
             peers={peers}
-            localUserId={user.id}
-            localUsername={username}
-            roomId={roomId!}
+            localUserId={userId}
+            localDisplayName={displayName}
           />
         </div>
 
@@ -389,7 +407,7 @@ const StudyRoom = () => {
             isPaused={isPaused}
           />
           <PomodoroTimer />
-          <ProgressStats userId={user.id} autoRefresh={true} />
+          <ProgressStats userId={userId} autoRefresh={true} />
         </div>
       </div>
     </div>

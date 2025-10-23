@@ -58,34 +58,19 @@ const SignIn = () => {
         }
 
         // Get email from auth.users using the user_id
-        // NOTE: This requires Supabase Admin privileges, which is not available on the client.
-        // For client-side sign-in, we must rely on email/password or OAuth.
-        // Since we cannot use auth.admin.getUserById on the client, we must assume the user provides an email for sign-in.
-        // If the user provides a username, we cannot look up the email on the client.
-        // Given the current implementation, we will revert to only supporting email/password sign-in for non-OAuth flows, 
-        // or rely on the user providing the email if they used a username previously.
+        const { data: authData, error: authError } = await supabase.auth.admin.getUserById(userData.user_id);
         
-        // For now, let's simplify the sign-in logic to only use email if it looks like an email, 
-        // or rely on the user providing the email if they used a username previously.
-        
-        // Since the original code attempts to fetch the email via username, and that requires admin privileges, 
-        // I will assume the user must sign in with the email associated with their account for non-OAuth flows.
-        // If the user provides a username, we will treat it as an email for now, which is a common pattern for Supabase.
-        
-        // Reverting to the original logic for now, but noting the potential issue with client-side username lookup.
-        // The primary goal here is fixing the OAuth redirect.
-        
-        // If it's a username, we cannot proceed on the client without the email.
-        // Let's assume the user must use their email for password sign-in.
-        if (!isEmail) {
+        if (authError || !authData.user) {
           toast({
             title: 'Error',
-            description: 'Please sign in using your email address.',
+            description: 'Unable to find user email',
             variant: 'destructive'
           });
           setLoading(false);
           return;
         }
+
+        email = authData.user.email || '';
       }
 
       const { error } = await supabase.auth.signInWithPassword({
@@ -105,25 +90,6 @@ const SignIn = () => {
     }
   };
 
-  const handleSignInWithGoogle = async () => {
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        // Redirect to root path, HashRouter will handle the rest
-        redirectTo: `${window.location.origin}/`
-      }
-    });
-    if (error) {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive'
-      });
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-secondary p-4">
       <Card className="w-full max-w-md p-8">
@@ -134,11 +100,11 @@ const SignIn = () => {
 
         <form onSubmit={handleSignIn} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="usernameOrEmail">Email</Label>
+            <Label htmlFor="usernameOrEmail">Username or Email</Label>
             <Input
               id="usernameOrEmail"
-              type="email"
-              placeholder="you@example.com"
+              type="text"
+              placeholder="johndoe or you@example.com"
               value={usernameOrEmail}
               onChange={(e) => setUsernameOrEmail(e.target.value)}
               required
@@ -160,29 +126,14 @@ const SignIn = () => {
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Signing in...' : 'Sign In'}
           </Button>
+
+          <div className="text-center text-sm">
+            <span className="text-muted-foreground">Don't have an account? </span>
+            <Link to="/signup" className="text-primary hover:underline">
+              Sign Up
+            </Link>
+          </div>
         </form>
-
-        <div className="relative my-6">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-card px-2 text-muted-foreground">
-              Or continue with
-            </span>
-          </div>
-        </div>
-
-        <Button variant="outline" className="w-full" onClick={handleSignInWithGoogle} disabled={loading}>
-          Sign In with Google
-        </Button>
-
-        <div className="text-center text-sm mt-4">
-          <span className="text-muted-foreground">Don't have an account? </span>
-          <Link to="/signup" className="text-primary hover:underline">
-            Sign Up
-          </Link>
-        </div>
       </Card>
     </div>
   );

@@ -9,7 +9,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 interface Message {
   id: string;
   user_id: string;
-  username: string;
+  display_name: string;
   message: string;
   created_at: string;
 }
@@ -17,10 +17,10 @@ interface Message {
 interface ChatRoomProps {
   roomId: string;
   userId: string;
-  username: string;
+  displayName: string;
 }
 
-const ChatRoom = ({ roomId, userId, username }: ChatRoomProps) => {
+const ChatRoom = ({ roomId, userId, displayName }: ChatRoomProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -57,7 +57,7 @@ const ChatRoom = ({ roomId, userId, username }: ChatRoomProps) => {
     const message: Message = {
       id: crypto.randomUUID(),
       user_id: userId,
-      username: username,
+      display_name: displayName,
       message: newMessage,
       created_at: new Date().toISOString()
     };
@@ -104,7 +104,7 @@ const ChatRoom = ({ roomId, userId, username }: ChatRoomProps) => {
                 }`}
               >
                 <span className="text-xs text-muted-foreground">
-                  {msg.username}
+                  {msg.display_name}
                 </span>
                 <div
                   className={`max-w-[80%] rounded-lg px-3 py-2 ${
