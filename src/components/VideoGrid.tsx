@@ -50,48 +50,62 @@ const VideoGrid = ({ localStream, peers, localUserId, localUsername, roomId }: V
     };
   }, [roomId, localUserId, toast]);
 
-  const setVideoElement = (
-    el: HTMLVideoElement | null,
-    participantId: string,
-    isLocal: boolean,
-    stream?: MediaStream | null
-  ) => {
-    if (!el) return;
-    // Keep a ref for remote peers
-    if (!isLocal) {
-      peerVideoRefs.current.set(participantId, el);
-    } else {
-      localVideoRef.current = el;
-    }
-    // Assign the correct stream immediately to avoid gray frames on pin/unpin
-    const mediaStream = isLocal ? localStream : stream;
-    if (mediaStream) {
+  // Function to assign stream to video element
+  const assignStream = (el: HTMLVideoElement, stream: MediaStream | null, isLocal: boolean) => {
+    if (stream && el.srcObject !== stream) {
       try {
-        if (el.srcObject !== mediaStream) el.srcObject = mediaStream;
-        // Ensure playback starts
+        el.srcObject = stream;
         el.onloadedmetadata = () => {
           el.play().catch(() => {});
         };
       } catch (e) {
         console.warn('Failed to attach stream', e);
       }
+    } else if (!stream && el.srcObject) {
+      // Clear stream if it's gone
+      el.srcObject = null;
     }
   };
 
+  // Ref callback for video elements
+  const setVideoElementRef = (
+    el: HTMLVideoElement | null,
+    participantId: string,
+    isLocal: boolean,
+    stream?: MediaStream | null
+  ) => {
+    if (!el) {
+      if (!isLocal) peerVideoRefs.current.delete(participantId);
+      return;
+    }
+    
+    if (!isLocal) {
+      peerVideoRefs.current.set(participantId, el);
+    } else {
+      localVideoRef.current = el;
+    }
+    
+    const mediaStream = isLocal ? localStream : stream;
+    assignStream(el, mediaStream, isLocal);
+  };
+
+  // Effect to handle local stream changes (e.g., when camera is toggled)
   useEffect(() => {
     if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
+      assignStream(localVideoRef.current, localStream, true);
     }
   }, [localStream]);
 
+  // Effect to handle remote stream changes (when peers array updates)
   useEffect(() => {
     peers.forEach(peer => {
       const videoElement = peerVideoRefs.current.get(peer.id);
-      if (videoElement && peer.stream) {
-        videoElement.srcObject = peer.stream;
+      if (videoElement) {
+        assignStream(videoElement, peer.stream || null, false);
       }
     });
-  }, [peers, pinnedPeers]);
+  }, [peers]);
+
 
   const allParticipants: Participant[] = [
     { id: localUserId, username: localUsername, stream: localStream, isLocal: true },
@@ -134,8 +148,6 @@ const VideoGrid = ({ localStream, peers, localUserId, localUsername, roomId }: V
   const orderedParticipants = [...pinnedParticipants, ...unpinnedParticipants];
   
   // Determine the main grid layout based on the number of pinned videos
-  const mainGridCount = pinnedParticipants.length > 0 ? pinnedParticipants.length : Math.min(4, orderedParticipants.length);
-  
   const mainGridParticipants = pinnedParticipants.length > 0 
     ? pinnedParticipants 
     : orderedParticipants.slice(0, 4);
@@ -165,7 +177,7 @@ const VideoGrid = ({ localStream, peers, localUserId, localUsername, roomId }: V
       className={`relative bg-secondary rounded-md sm:rounded-lg overflow-hidden aspect-video min-h-0 ${isMain ? 'h-full' : 'h-auto'}`}
     >
       <video
-        ref={(el) => setVideoElement(el, participant.id, participant.isLocal, participant.stream)}
+        ref={(el) => setVideoElementRef(el, participant.id, participant.isLocal, participant.stream)}
         autoPlay
         playsInline
         muted={participant.isLocal}
