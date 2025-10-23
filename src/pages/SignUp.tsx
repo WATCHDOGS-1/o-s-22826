@@ -113,7 +113,8 @@ const SignUp = () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/home`
+        // Redirect to root path, HashRouter will handle the rest
+        redirectTo: `${window.location.origin}/`
       }
     });
     if (error) {
