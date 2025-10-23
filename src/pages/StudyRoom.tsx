@@ -21,7 +21,7 @@ const StudyRoom = () => {
   const [user, setUser] = useState<any>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [peers, setPeers] = useState<Peer[]>([]);
-  const [videoEnabled, setVideoEnabled] = useState(true);
+  const [videoEnabled, setVideoEnabled] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(true);
   const [currentStreak, setCurrentStreak] = useState(0);

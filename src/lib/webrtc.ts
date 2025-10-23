@@ -39,56 +39,16 @@ export class WebRTCManager {
 
   async init() {
     try {
-      // Get video and audio stream but mute audio completely
-      try {
-        this.localStream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            width: { ideal: 1280, max: 1920 },
-            height: { ideal: 720, max: 1080 },
-            facingMode: 'user',
-            frameRate: { ideal: 30, max: 60 }
-          },
-          audio: true
-        });
-        
-        // Immediately mute all audio tracks so no audio is transmitted
-        this.localStream.getAudioTracks().forEach(track => {
-          track.enabled = false;
-        });
-        
-        console.log('Local media stream obtained with', 
-          this.localStream.getVideoTracks().length, 'video tracks');
-      } catch (mediaError) {
-        console.error('Could not access camera/microphone:', mediaError);
-        // Try video only as fallback
-        try {
-          this.localStream = await navigator.mediaDevices.getUserMedia({
-            video: { 
-              width: { ideal: 1280 },
-              height: { ideal: 720 }
-            },
-            audio: true
-          });
-          
-          // Mute audio
-          this.localStream.getAudioTracks().forEach(track => {
-            track.enabled = false;
-          });
-          console.log('Fallback: Video-only stream obtained');
-        } catch (fallbackError) {
-          console.error('Could not access camera:', fallbackError);
-          // Create an empty MediaStream so the rest of the code works
-          this.localStream = new MediaStream();
-        }
-      }
-
+      // Create an empty MediaStream to start. User will enable camera manually.
+      this.localStream = new MediaStream();
+      
       // Track initial state
-      this.wasVideoEnabled = this.localStream.getVideoTracks().length > 0;
+      this.wasVideoEnabled = false;
 
-      // Setup track ended handlers
+      // Setup track ended handlers (will be empty initially, but good to have)
       this.setupTrackEndedHandlers();
 
-      // Setup page visibility handler to restart streams
+      // Setup page visibility handler
       this.setupVisibilityHandler();
 
       // Setup Supabase Realtime channel for signaling
