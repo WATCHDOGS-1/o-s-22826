@@ -1,6 +1,7 @@
 import { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
+import { useNavigate } from 'react-router-dom'; // Import useNavigate
 
 export interface UserProfile {
   id: string; // DB ID
@@ -26,6 +27,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // useNavigate hook must be used inside a component rendered within the Router
+  // Since AuthProvider is inside HashRouter in App.tsx, this is safe.
+  const navigate = useNavigate(); 
 
   useEffect(() => {
     const getSession = async () => {
@@ -57,16 +62,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         
         if (data) {
           setProfile(data as UserProfile);
+        } else if (error && error.code === 'PGRST116') { // PGRST116: No rows found
+          // User is logged in via Auth, but no profile exists in 'users' table (e.g., OAuth first sign-in)
+          setProfile(null);
+          // Redirect to onboarding to complete profile setup
+          if (window.location.hash !== '#/onboarding') {
+            navigate('/onboarding');
+          }
         } else if (error) {
           console.error("Error fetching profile:", error);
+          setProfile(null);
         }
       } else {
         setProfile(null);
       }
     };
 
-    fetchProfile();
-  }, [user]);
+    if (!loading) {
+      fetchProfile();
+    }
+  }, [user, loading, navigate]);
 
   const value = {
     user,

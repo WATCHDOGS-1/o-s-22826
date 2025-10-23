@@ -13,6 +13,7 @@ import PublicProfile from "./pages/PublicProfile";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import ResetPassword from "./pages/ResetPassword";
+import Onboarding from "./pages/Onboarding"; // Import Onboarding
 import NotFound from "./pages/NotFound";
 import Footer from "./components/Footer";
 
@@ -31,6 +32,7 @@ const App = () => (
                 <Route path="/" element={<Index />} />
                 <Route path="/signin" element={<SignIn />} />
                 <Route path="/signup" element={<SignUp />} />
+                <Route path="/onboarding" element={<Onboarding />} /> {/* New Route */}
                 <Route path="/home" element={<Home />} />
                 <Route path="/study/:roomId" element={<StudyRoom />} />
                 <Route path="/leaderboard" element={<Leaderboard />} />
