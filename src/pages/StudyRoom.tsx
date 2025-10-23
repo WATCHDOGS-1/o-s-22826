@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { LogOut, Video, VideoOff, Monitor } from 'lucide-react';
-import { getUserId, getDisplayName } from '@/lib/userStorage';
+import { getDisplayName } from '@/lib/userStorage';
 import { WebRTCManager, Peer } from '@/lib/webrtc';
 import { saveStudySession, ensureUser, getUserStats } from '@/lib/studyTracker';
 import { useToast } from '@/hooks/use-toast';
@@ -12,13 +12,14 @@ import StudyTimer from '@/components/StudyTimer';
 import PomodoroTimer from '@/components/PomodoroTimer';
 import ProgressStats from '@/components/ProgressStats';
 import ChatRoom from '@/components/ChatRoom';
+import { useAuth } from '@/contexts/AuthContext';
 
 const StudyRoom = () => {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, loading: authLoading, authId } = useAuth();
 
-  const [user, setUser] = useState<any>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [peers, setPeers] = useState<Peer[]>([]);
   const [videoEnabled, setVideoEnabled] = useState(true);
@@ -33,45 +34,30 @@ const StudyRoom = () => {
   const webrtcManager = useRef<WebRTCManager | null>(null);
   const pauseStartTimeRef = useRef<number | null>(null);
   const totalPausedTimeRef = useRef<number>(0);
-  const userId = getUserId();
+  
+  // Use authId for consistent user identification
+  const userId = authId; 
   const displayName = getDisplayName() || 'Anonymous';
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate('/auth');
-      } else {
-        setUser(session.user);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session) {
-        navigate('/auth');
-      } else {
-        setUser(session.user);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
-
-  useEffect(() => {
-    if (!roomId || !user) {
+    if (!authLoading && !user) {
+      navigate('/signin');
       return;
     }
+    
+    if (roomId && user) {
+      initializeRoom();
+      loadUserStreak();
+      loadTimerState();
 
-    initializeRoom();
-    loadUserStreak();
-    loadTimerState();
-
-    return () => {
-      saveTimerState();
-      if (webrtcManager.current) {
-        webrtcManager.current.disconnect();
-      }
-    };
-  }, [roomId, user]);
+      return () => {
+        saveTimerState();
+        if (webrtcManager.current) {
+          webrtcManager.current.disconnect();
+        }
+      };
+    }
+  }, [roomId, user, authLoading]);
 
   // Timer effect - runs continuously and calculates elapsed time
   useEffect(() => {
@@ -145,18 +131,18 @@ const StudyRoom = () => {
     }
     
     // Load today's existing study time and session start
-    const { data: user } = await (supabase as any)
+    const { data: dbUser } = await (supabase as any)
       .from('users')
       .select('id')
       .eq('user_id', userId)
       .maybeSingle();
     
-    if (user) {
+    if (dbUser) {
       const today = new Date().toISOString().split('T')[0];
       const { data: todaySession } = await (supabase as any)
         .from('study_sessions')
         .select('minutes_studied, session_start')
-        .eq('user_id', user.id)
+        .eq('user_id', dbUser.id)
         .eq('date', today)
         .maybeSingle();
       
@@ -177,7 +163,7 @@ const StudyRoom = () => {
           await (supabase as any)
             .from('study_sessions')
             .update({ session_start: new Date().toISOString() })
-            .eq('user_id', user.id)
+            .eq('user_id', dbUser.id)
             .eq('date', today);
         }
       } else {
@@ -189,7 +175,7 @@ const StudyRoom = () => {
         await (supabase as any)
           .from('study_sessions')
           .insert({
-            user_id: user.id,
+            user_id: dbUser.id,
             room_id: roomId,
             date: today,
             minutes_studied: 0,
@@ -324,7 +310,7 @@ const StudyRoom = () => {
     saveTimerState();
   };
 
-  if (!user || isConnecting) {
+  if (authLoading || !user || isConnecting) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">

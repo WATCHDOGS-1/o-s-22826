@@ -4,38 +4,62 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { BookOpen, Users, Trophy, Clock, LogOut } from 'lucide-react';
-import { setDisplayName } from '@/lib/userStorage';
+import { setDisplayName, getDisplayName } from '@/lib/userStorage';
 import { supabase } from '@/integrations/supabase/client';
+import UsernameSetupModal from '@/components/UsernameSetupModal';
+import { useAuth } from '@/contexts/AuthContext';
 
 const Home = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<any>(null);
-  const [displayNameInput, setDisplayNameInput] = useState('');
+  const { user, loading: authLoading, authId } = useAuth();
+  
+  const [dbUser, setDbUser] = useState<any>(null);
+  const [displayNameInput, setDisplayNameInput] = useState(getDisplayName() || '');
+  const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate('/signin');
-      } else {
-        setUser(session.user);
-      }
-    });
+    if (!authLoading && !user) {
+      navigate('/signin');
+      return;
+    }
+    
+    if (user) {
+      // Load DB user data to check for username
+      const loadDbUser = async () => {
+        const { data: dbUserData, error } = await supabase
+          .from('users')
+          .select('display_name, username')
+          .eq('user_id', user.id)
+          .maybeSingle();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session) {
-        navigate('/signin');
-      } else {
-        setUser(session.user);
-      }
-    });
+        if (error) {
+          console.error('Error fetching DB user data:', error);
+          return;
+        }
 
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+        if (dbUserData) {
+          setDbUser(dbUserData);
+          
+          // If display name is not set in local storage, use the one from DB
+          if (!getDisplayName() || getDisplayName() === 'Anonymous') {
+            const name = dbUserData.display_name || dbUserData.username || user.user_metadata.full_name || user.email?.split('@')[0] || 'Anonymous';
+            setDisplayName(name);
+            setDisplayNameInput(name);
+          }
+          
+          // Check if username is missing (typical for OAuth sign-ins)
+          if (!dbUserData.username) {
+            setIsSetupModalOpen(true);
+          }
+        }
+      };
+      loadDbUser();
+    }
+  }, [user, authLoading, navigate]);
 
   const handleJoinRoom = () => {
-    if (displayNameInput.trim()) {
-      setDisplayName(displayNameInput.trim());
-    }
+    const finalDisplayName = displayNameInput.trim() || (dbUser?.display_name || 'Anonymous');
+    setDisplayName(finalDisplayName);
     navigate('/study/global-room');
   };
 
@@ -43,6 +67,24 @@ const Home = () => {
     await supabase.auth.signOut();
     navigate('/');
   };
+  
+  const handleUsernameSet = (username: string) => {
+    // Update local state and storage after username is set via modal
+    setDisplayName(username);
+    setDisplayNameInput(username);
+    setDbUser((prev: any) => ({ ...prev, username, display_name: username }));
+    setIsSetupModalOpen(false);
+  };
+  
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-pulse text-primary text-xl mb-4">Loading session...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -70,7 +112,7 @@ const Home = () => {
           <div className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                Display Name (optional)
+                Display Name (used in room chat)
               </label>
               <Input
                 type="text"
@@ -145,6 +187,16 @@ const Home = () => {
           </Button>
         </div>
       </div>
+      
+      {user && isSetupModalOpen && (
+        <UsernameSetupModal 
+          isOpen={isSetupModalOpen}
+          onClose={() => setIsSetupModalOpen(false)}
+          userId={user.id}
+          initialDisplayName={user.user_metadata.full_name || user.email?.split('@')[0] || ''}
+          onUsernameSet={handleUsernameSet}
+        />
+      )}
     </div>
   );
 };

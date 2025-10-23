@@ -7,7 +7,7 @@ import { TrendingUp, Edit2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface ProgressStatsProps {
-  userId: string; // This should be the localStorage userId (text), not auth user id
+  userId: string; // This is now the Supabase Auth ID (user.id)
   autoRefresh?: boolean;
 }
 
@@ -49,7 +49,9 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
     }
     
     // Load progress directly
-    loadProgress();
+    if (userId) {
+      loadProgress(userId);
+    }
     
     // Subscribe to realtime updates
     const channel = supabase
@@ -62,7 +64,9 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
           table: 'study_sessions'
         },
         () => {
-          loadProgress();
+          if (userId) {
+            loadProgress(userId);
+          }
         }
       )
       .subscribe();
@@ -72,27 +76,37 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
     };
   }, [userId, autoRefresh]);
 
-  const loadProgress = async () => {
+  const loadProgress = async (currentUserId: string) => {
     try {
       setIsLoading(true);
       
-      // First get the database user ID
+      // First get the database user ID (id column) using the Supabase Auth ID (user_id column)
       const { data: user, error: userError } = await (supabase as any)
         .from('users')
         .select('id')
-        .eq('user_id', userId)
+        .eq('user_id', currentUserId)
         .maybeSingle();
       
       if (userError || !user) {
-        console.error('Error fetching user:', userError);
+        console.error('Error fetching user DB ID:', userError);
         setIsLoading(false);
         return;
       }
 
       const dbUserId = user.id;
       const today = new Date().toISOString().split('T')[0];
-      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      
+      // Calculate start of the week (Sunday)
+      const now = new Date();
+      const dayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday
+      const diffToSunday = dayOfWeek === 0 ? 0 : dayOfWeek;
+      const weekAgo = new Date(now);
+      weekAgo.setDate(now.getDate() - diffToSunday);
+      const weekStart = weekAgo.toISOString().split('T')[0];
+      
+      // Calculate start of the month
+      const monthAgo = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthStart = monthAgo.toISOString().split('T')[0];
 
       // Daily
       const { data: dailyData } = await (supabase.rpc as any)(
@@ -104,14 +118,14 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
       // Weekly
       const { data: weeklyData } = await (supabase.rpc as any)(
         'get_period_minutes',
-        { p_user_id: dbUserId, p_start_date: weekAgo }
+        { p_user_id: dbUserId, p_start_date: weekStart }
       );
       setWeeklyMinutes((weeklyData as number) || 0);
 
       // Monthly
       const { data: monthlyData } = await (supabase.rpc as any)(
         'get_period_minutes',
-        { p_user_id: dbUserId, p_start_date: monthAgo }
+        { p_user_id: dbUserId, p_start_date: monthStart }
       );
       setMonthlyMinutes((monthlyData as number) || 0);
       

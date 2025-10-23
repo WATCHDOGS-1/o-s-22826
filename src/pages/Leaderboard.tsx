@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Trophy, ArrowLeft, Clock, Medal } from 'lucide-react';
 import { getWeeklyLeaderboard } from '@/lib/studyTracker';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface LeaderboardEntry {
   user_id: string;
@@ -14,26 +15,17 @@ interface LeaderboardEntry {
 
 const Leaderboard = () => {
   const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate('/signin');
-      } else {
-        loadLeaderboard();
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session) {
-        navigate('/signin');
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+    if (!authLoading && !user) {
+      navigate('/signin');
+    } else if (user) {
+      loadLeaderboard();
+    }
+  }, [user, authLoading, navigate]);
 
   const loadLeaderboard = async () => {
     setLoading(true);
@@ -54,6 +46,16 @@ const Leaderboard = () => {
     if (index === 2) return <Medal className="h-6 w-6 text-amber-600" />;
     return null;
   };
+  
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-pulse text-primary text-xl mb-4">Loading leaderboard...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">

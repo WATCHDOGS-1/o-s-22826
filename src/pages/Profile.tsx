@@ -5,67 +5,59 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, User, Clock, Flame, Trophy, Edit } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { getUserId, getDisplayName, setDisplayName } from '@/lib/userStorage';
+import { getDisplayName, setDisplayName } from '@/lib/userStorage';
 import { getUserStats, ensureUser } from '@/lib/studyTracker';
 import { useToast } from '@/hooks/use-toast';
 import ProgressStats from '@/components/ProgressStats';
+import { useAuth } from '@/contexts/AuthContext';
 
 const Profile = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, loading: authLoading, authId } = useAuth();
   
-  const [user, setUser] = useState<any>(null);
   const [stats, setStats] = useState({
     total_minutes: 0,
     current_streak: 0,
     longest_streak: 0,
   });
-  const [loading, setLoading] = useState(true);
+  const [loadingStats, setLoadingStats] = useState(true);
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(getDisplayName() || '');
 
-  const userId = getUserId();
-
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate('/signin');
-      } else {
-        setUser(session.user);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session) {
-        navigate('/signin');
-      } else {
-        setUser(session.user);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
-
-  useEffect(() => {
-    if (user) {
-      loadStats();
+    if (!authLoading && !user) {
+      navigate('/signin');
     }
-  }, [user]);
+  }, [user, authLoading, navigate]);
 
-  const loadStats = async () => {
-    setLoading(true);
-    await ensureUser(userId, getDisplayName() || undefined);
-    const userStats = await getUserStats(userId);
+  useEffect(() => {
+    if (authId && !authLoading) {
+      loadStats(authId);
+    }
+  }, [authId, authLoading]);
+
+  const loadStats = async (currentAuthId: string) => {
+    setLoadingStats(true);
+    await ensureUser(currentAuthId, getDisplayName() || undefined);
+    const userStats = await getUserStats(currentAuthId);
     if (userStats) {
       setStats(userStats);
     }
-    setLoading(false);
+    setLoadingStats(false);
   };
 
   const handleSaveName = async () => {
-    if (nameInput.trim()) {
-      setDisplayName(nameInput.trim());
-      await ensureUser(userId, nameInput.trim());
+    if (nameInput.trim() && authId) {
+      const newName = nameInput.trim();
+      setDisplayName(newName);
+      
+      // Update DB display name
+      await supabase
+        .from('users')
+        .update({ display_name: newName })
+        .eq('user_id', authId);
+        
       setIsEditingName(false);
       toast({
         title: 'Name Updated',
@@ -80,11 +72,11 @@ const Profile = () => {
     return `${hours}h ${mins}m`;
   };
 
-  if (!user) {
+  if (authLoading || !user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-pulse text-primary text-xl mb-4">Loading...</div>
+          <div className="animate-pulse text-primary text-xl mb-4">Loading profile...</div>
         </div>
       </div>
     );
@@ -138,11 +130,11 @@ const Profile = () => {
                   </Button>
                 </div>
               )}
-              <p className="text-sm text-muted-foreground">User ID: {userId}</p>
+              <p className="text-sm text-muted-foreground">Auth ID: {authId}</p>
             </div>
           </div>
 
-          {loading ? (
+          {loadingStats ? (
             <div className="text-center py-12">
               <div className="animate-pulse text-muted-foreground">Loading stats...</div>
             </div>
@@ -199,7 +191,7 @@ const Profile = () => {
 
         {/* Progress Stats */}
         <div className="max-w-2xl mx-auto mb-8">
-          <ProgressStats userId={userId} />
+          <ProgressStats userId={authId} />
         </div>
 
         <div className="flex justify-center gap-4 mt-8">
