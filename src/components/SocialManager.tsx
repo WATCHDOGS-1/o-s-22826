@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { UserPlus, Check, X, Search, Users, Clock } from 'lucide-react';
+import { UserPlus, Check, X, Search, Users, Clock, MessageSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getUserId } from '@/lib/userStorage';
 import { 
@@ -174,8 +174,8 @@ const SocialManager = () => {
               {friends.map(friend => (
                 <div key={friend.user_id} className="flex items-center justify-between p-2 bg-secondary rounded-md">
                   <span className="font-medium">{friend.username}</span>
-                  <Button size="sm" variant="outline" disabled>
-                    Chat (Coming Soon)
+                  <Button size="sm" variant="outline" disabled className="flex items-center gap-1">
+                    <MessageSquare className="h-4 w-4" /> Chat
                   </Button>
                 </div>
               ))}

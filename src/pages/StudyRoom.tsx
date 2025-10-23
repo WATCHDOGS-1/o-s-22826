@@ -29,7 +29,7 @@ const StudyRoom = () => {
   const [isPaused, setIsPaused] = useState(false);
   const [todaysTotalMinutes, setTodaysTotalMinutes] = useState(0);
   const [sessionStartTimestamp, setSessionStartTimestamp] = useState<number>(Date.now());
-  const [displayName, setDisplayNameState] = useState('Anonymous');
+  const [username, setUsernameState] = useState('Anonymous');
 
   const webrtcManager = useRef<WebRTCManager | null>(null);
   const pauseStartTimeRef = useRef<number | null>(null);
@@ -65,9 +65,9 @@ const StudyRoom = () => {
     
     const fullInitialization = async () => {
         const name = await getDisplayUsername(userId);
-        setDisplayNameState(name);
+        setUsernameState(name);
         
-        await loadUserStreak(name);
+        await loadUserStreak();
         await initializeRoom(name);
     };
     
@@ -140,8 +140,8 @@ const StudyRoom = () => {
     localStorage.setItem(storageKey, JSON.stringify(state));
   };
 
-  const loadUserStreak = async (currentDisplayName: string) => {
-    await ensureUser(userId, currentDisplayName); // Ensure user exists with correct name
+  const loadUserStreak = async () => {
+    await ensureUser(userId); // Ensure user exists
     const stats = await getUserStats(userId);
     if (stats) {
       setCurrentStreak(stats.current_streak);
@@ -211,7 +211,7 @@ const StudyRoom = () => {
     }
   };
 
-  const initializeRoom = async (currentDisplayName: string) => {
+  const initializeRoom = async (currentUsername: string) => {
     try {
       setIsConnecting(true);
 
@@ -219,7 +219,7 @@ const StudyRoom = () => {
       webrtcManager.current = new WebRTCManager(
         roomId!,
         userId,
-        currentDisplayName,
+        currentUsername, // Use username as display name
         (updatedPeers) => {
           setPeers(updatedPeers);
         }
@@ -268,13 +268,6 @@ const StudyRoom = () => {
     }
 
     // Stop all media streams before disconnecting
-    if (localStream) {
-      localStream.getTracks().forEach(track => {
-        console.log('Stopping track on leave:', track.kind, track.label);
-        track.stop();
-      });
-    }
-
     if (webrtcManager.current) {
       webrtcManager.current.disconnect();
     }
@@ -367,7 +360,7 @@ const StudyRoom = () => {
               >
                 <Monitor className="h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5" />
               </Button>
-              <ChatRoom roomId={roomId!} userId={userId} displayName={displayName} />
+              <ChatRoom roomId={roomId!} userId={userId} username={username} />
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -397,7 +390,8 @@ const StudyRoom = () => {
             localStream={localStream}
             peers={peers}
             localUserId={userId}
-            localDisplayName={displayName}
+            localUsername={username}
+            roomId={roomId!}
           />
         </div>
 

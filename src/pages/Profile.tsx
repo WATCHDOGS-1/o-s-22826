@@ -20,7 +20,7 @@ const Profile = () => {
     longest_streak: 0,
   });
   const [loading, setLoading] = useState(true);
-  const [displayName, setDisplayNameState] = useState('Loading...');
+  const [username, setUsernameState] = useState('Loading...');
 
   const userId = getUserId();
 
@@ -47,13 +47,13 @@ const Profile = () => {
   useEffect(() => {
     if (user) {
       loadStats();
-      loadDisplayName();
+      loadUsername();
     }
   }, [user]);
 
-  const loadDisplayName = async () => {
+  const loadUsername = async () => {
     const name = await getDisplayUsername(userId);
-    setDisplayNameState(name);
+    setUsernameState(name);
   };
 
   const loadStats = async () => {
@@ -94,7 +94,7 @@ const Profile = () => {
             <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
               My Profile
             </h1>
-            <p className="text-muted-foreground mt-2">User: {displayName}</p>
+            <p className="text-muted-foreground mt-2">User: {username}</p>
           </div>
         </div>
 
@@ -117,7 +117,7 @@ const Profile = () => {
                 </div>
                 <div className="flex-1">
                   <h2 className="text-2xl font-bold text-foreground">
-                    {displayName}
+                    {username}
                   </h2>
                   <p className="text-sm text-muted-foreground">User ID: {userId}</p>
                 </div>

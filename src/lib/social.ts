@@ -8,7 +8,6 @@ export interface UserProfile {
   id: string; // DB ID
   user_id: string; // Auth ID
   username: string;
-  display_name: string;
 }
 
 export interface FriendRequest {
@@ -24,7 +23,7 @@ export const searchUsers = async (query: string, currentUserId: string): Promise
 
   const { data, error } = await (supabase as any)
     .from('users')
-    .select('id, user_id, username, display_name')
+    .select('id, user_id, username')
     .ilike('username', `%${query}%`)
     .neq('user_id', currentUserId)
     .limit(10);
@@ -34,7 +33,12 @@ export const searchUsers = async (query: string, currentUserId: string): Promise
     return [];
   }
 
-  return data as UserProfile[];
+  // Map data to UserProfile, ensuring display_name is removed
+  return data.map(u => ({
+    id: u.id,
+    user_id: u.user_id,
+    username: u.username,
+  })) as UserProfile[];
 };
 
 export const sendFriendRequest = async (fromUserId: string, toUserId: string) => {
@@ -80,8 +84,8 @@ export const getPendingRequests = async (currentUserId: string): Promise<FriendR
     .from('friend_requests')
     .select(`
       id, created_at, status,
-      from_user_id ( id, user_id, username, display_name ),
-      to_user_id ( id, user_id, username, display_name )
+      from_user_id ( id, user_id, username ),
+      to_user_id ( id, user_id, username )
     `)
     .eq('to_user_id', currentUser.id)
     .eq('status', 'PENDING');
@@ -137,8 +141,8 @@ export const getFriends = async (currentUserId: string): Promise<UserProfile[]> 
   const { data: friendships, error } = await (supabase as any)
     .from('friends')
     .select(`
-      user1_id ( id, user_id, username, display_name ),
-      user2_id ( id, user_id, username, display_name )
+      user1_id ( id, user_id, username ),
+      user2_id ( id, user_id, username )
     `)
     .or(`user1_id.eq.${dbId},user2_id.eq.${dbId}`);
 

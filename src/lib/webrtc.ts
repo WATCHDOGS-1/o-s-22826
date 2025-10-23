@@ -188,6 +188,7 @@ export class WebRTCManager {
           // Don't auto-restart screen share, user needs to click the button again
           console.log('Screen share was active but ended - user needs to restart manually');
           this.localStream.removeTrack(videoTrack);
+          videoTrack.stop(); // Ensure track is fully stopped
           
           // Notify peers to remove video
           this.peers.forEach(peer => {
@@ -208,6 +209,7 @@ export class WebRTCManager {
           
           const newVideoTrack = newStream.getVideoTracks()[0];
           this.localStream.removeTrack(videoTrack);
+          videoTrack.stop(); // Ensure old track is fully stopped
           this.localStream.addTrack(newVideoTrack);
           
           // Setup ended handler for new track
@@ -593,14 +595,14 @@ export class WebRTCManager {
     const videoTrack = this.localStream.getVideoTracks()[0];
     
     // If track exists and is enabled, turn it OFF
-    if (videoTrack?.enabled) {
-      // Stop the track immediately to turn off the camera light
+    if (videoTrack) {
+      // 1. Stop the track immediately to turn off the camera light
       videoTrack.stop();
       this.localStream.removeTrack(videoTrack);
       
       console.log('Video track stopped and removed');
       
-      // Update peer connections to remove video
+      // 2. Update peer connections to remove video
       this.peers.forEach(peer => {
         const sender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
         if (sender) {
@@ -608,16 +610,11 @@ export class WebRTCManager {
         }
       });
       
+      this.wasVideoEnabled = false;
       return false;
     } else {
-      // Turn ON: get new video stream (either no track or track is disabled)
+      // Turn ON: get new video stream
       try {
-        // If there's a disabled track, remove it first
-        if (videoTrack) {
-          videoTrack.stop();
-          this.localStream.removeTrack(videoTrack);
-        }
-        
         const newStream = await navigator.mediaDevices.getUserMedia({
           video: { width: 1280, height: 720 }
         });
@@ -645,9 +642,11 @@ export class WebRTCManager {
           await this.renegotiate(peerId);
         }
         
+        this.wasVideoEnabled = true;
         return true;
       } catch (error) {
         console.error('Error starting video:', error);
+        this.wasVideoEnabled = false;
         return false;
       }
     }
@@ -668,6 +667,7 @@ export class WebRTCManager {
       // Stop screen share, go back to camera only if video was enabled before
       videoTrack.stop();
       this.localStream.removeTrack(videoTrack);
+      this.wasScreenSharing = false;
       
       // Only restore camera if it was enabled before screen sharing
       if (this.wasVideoEnabledBeforeScreenShare) {
@@ -702,7 +702,7 @@ export class WebRTCManager {
       return false; // Not sharing anymore
     } else {
       // Start screen share - remember current video state
-      this.wasVideoEnabledBeforeScreenShare = videoTrack?.enabled || false;
+      this.wasVideoEnabledBeforeScreenShare = videoTrack ? true : false;
       
       try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
@@ -719,6 +719,7 @@ export class WebRTCManager {
         }
         
         this.localStream.addTrack(screenTrack);
+        this.wasScreenSharing = true;
         
         // Update peer connections
         const peersNeedingRenegotiation: string[] = [];
@@ -742,6 +743,7 @@ export class WebRTCManager {
         // Handle when user stops sharing via browser UI
         screenTrack.onended = async () => {
           this.localStream?.removeTrack(screenTrack);
+          this.wasScreenSharing = false;
           
           // Only restore camera if it was enabled before screen sharing
           if (this.wasVideoEnabledBeforeScreenShare) {
@@ -787,10 +789,10 @@ export class WebRTCManager {
       this.visibilityChangeHandler = null;
     }
 
-    // Stop local stream first - this ensures camera light turns off
+    // Stop local stream tracks explicitly
     if (this.localStream) {
       this.localStream.getTracks().forEach(track => {
-        console.log('Stopping track:', track.kind, track.label);
+        console.log('Stopping track on disconnect:', track.kind, track.label);
         track.stop();
       });
       this.localStream = null;

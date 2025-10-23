@@ -10,26 +10,20 @@ export interface UserStats {
 export const getDisplayUsername = async (userId: string): Promise<string> => {
   const { data } = await (supabase as any)
     .from('users')
-    .select('display_name')
+    .select('username')
     .eq('user_id', userId)
     .maybeSingle();
   
-  return data?.display_name || 'Anonymous';
+  return data?.username || 'Anonymous';
 };
 
-export const ensureUser = async (userId: string, displayName?: string) => {
-  // Upsert user to ensure existence. If displayName is provided (only during initial setup/anonymous), use it.
-  // Otherwise, rely on existing DB data (username set during signup).
-  const upsertData: { user_id: string; display_name?: string; username?: string } = { user_id: userId };
-  
-  if (displayName) {
-    upsertData.display_name = displayName;
-    upsertData.username = displayName;
-  }
+export const ensureUser = async (userId: string) => {
+  // Ensure user exists using only user_id and relying on existing username/display_name set during signup.
+  const upsertData: { user_id: string } = { user_id: userId };
   
   const { error } = await (supabase as any)
     .from('users')
-    .upsert(upsertData, { onConflict: 'user_id', ignoreDuplicates: !displayName });
+    .upsert(upsertData, { onConflict: 'user_id', ignoreDuplicates: true });
 
   if (error) {
     console.error('Error upserting user:', error);
@@ -218,7 +212,7 @@ export const getWeeklyLeaderboard = async () => {
       minutes_studied,
       users!inner (
         user_id,
-        display_name
+        username
       )
     `)
     .gte('date', oneWeekAgo.toISOString().split('T')[0])
@@ -232,7 +226,7 @@ export const getWeeklyLeaderboard = async () => {
     if (!acc[userKey]) {
       acc[userKey] = {
         user_id: session.users.user_id,
-        display_name: session.users.display_name || 'Anonymous',
+        display_name: session.users.username || 'Anonymous', // Use username for display
         total_minutes: 0
       };
     }
