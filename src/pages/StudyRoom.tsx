@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { LogOut, Video, VideoOff, Monitor } from 'lucide-react';
+import { LogOut, Video, VideoOff } from 'lucide-react';
 import { getUserId } from '@/lib/userStorage';
 import { WebRTCManager, Peer } from '@/lib/webrtc';
 import { saveStudySession, ensureUser, getUserStats, getDisplayUsername } from '@/lib/studyTracker';
@@ -22,7 +22,6 @@ const StudyRoom = () => {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [peers, setPeers] = useState<Peer[]>([]);
   const [videoEnabled, setVideoEnabled] = useState(false);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(true);
   const [currentStreak, setCurrentStreak] = useState(0);
   const [sessionDuration, setSessionDuration] = useState(0);
@@ -293,15 +292,6 @@ const StudyRoom = () => {
     }
   };
 
-  const toggleScreenShare = async () => {
-    if (webrtcManager.current) {
-      const sharing = await webrtcManager.current.toggleScreenShare();
-      setIsScreenSharing(sharing);
-      // Crucial: Update localStream state to force VideoGrid re-render
-      setLocalStream(webrtcManager.current.getLocalStream());
-    }
-  };
-
   const handlePauseToggle = () => {
     const newPausedState = !isPaused;
     setIsPaused(newPausedState);
@@ -350,15 +340,6 @@ const StudyRoom = () => {
                 title={videoEnabled ? "Turn off camera" : "Turn on camera"}
               >
                 {videoEnabled ? <Video className="h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5" /> : <VideoOff className="h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5" />}
-              </Button>
-              <Button 
-                variant={isScreenSharing ? "default" : "ghost"} 
-                size="icon" 
-                className="h-7 w-7 sm:h-9 sm:w-9 md:h-10 md:w-10 touch-manipulation" 
-                onClick={toggleScreenShare}
-                title={isScreenSharing ? "Stop sharing" : "Share screen"}
-              >
-                <Monitor className="h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5" />
               </Button>
               <ChatRoom roomId={roomId!} userId={userId} username={username} />
               <Button 
