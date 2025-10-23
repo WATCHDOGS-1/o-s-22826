@@ -6,10 +6,11 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { Chrome } from 'lucide-react';
 
 const SignIn = () => {
   const [loading, setLoading] = useState(false);
-  const [usernameOrEmail, setUsernameOrEmail] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -35,44 +36,8 @@ const SignIn = () => {
     setLoading(true);
 
     try {
-      // Check if input is email or username
-      const isEmail = usernameOrEmail.includes('@');
-      let email = usernameOrEmail;
-
-      // If it's a username, fetch the email
-      if (!isEmail) {
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('user_id')
-          .eq('username', usernameOrEmail)
-          .maybeSingle();
-
-        if (userError || !userData) {
-          toast({
-            title: 'Error',
-            description: 'Username not found',
-            variant: 'destructive'
-          });
-          setLoading(false);
-          return;
-        }
-
-        // Get email from auth.users using the user_id
-        const { data: authData, error: authError } = await supabase.auth.admin.getUserById(userData.user_id);
-        
-        if (authError || !authData.user) {
-          toast({
-            title: 'Error',
-            description: 'Unable to find user email',
-            variant: 'destructive'
-          });
-          setLoading(false);
-          return;
-        }
-
-        email = authData.user.email || '';
-      }
-
+      // NOTE: Supabase signInWithPassword requires an email. 
+      // We assume the user enters their email here.
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password
@@ -89,6 +54,26 @@ const SignIn = () => {
       setLoading(false);
     }
   };
+  
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+            redirectTo: `${window.location.origin}/`,
+        },
+    });
+
+    if (error) {
+        toast({
+            title: 'Error',
+            description: error.message,
+            variant: 'destructive'
+        });
+        setLoading(false);
+    }
+    // Supabase handles redirect on success
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-secondary p-4">
@@ -98,15 +83,36 @@ const SignIn = () => {
           <p className="text-muted-foreground">Welcome back!</p>
         </div>
 
+        <Button 
+          onClick={handleGoogleSignIn} 
+          className="w-full mb-6 flex items-center justify-center gap-2" 
+          variant="outline"
+          disabled={loading}
+        >
+          <Chrome className="h-5 w-5" />
+          Continue with Google
+        </Button>
+        
+        <div className="relative mb-6">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t border-border" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-card px-2 text-muted-foreground">
+              Or continue with email
+            </span>
+          </div>
+        </div>
+
         <form onSubmit={handleSignIn} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="usernameOrEmail">Username or Email</Label>
+            <Label htmlFor="email">Email</Label>
             <Input
-              id="usernameOrEmail"
-              type="text"
-              placeholder="johndoe or you@example.com"
-              value={usernameOrEmail}
-              onChange={(e) => setUsernameOrEmail(e.target.value)}
+              id="email"
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
             />
           </div>
@@ -121,6 +127,9 @@ const SignIn = () => {
               onChange={(e) => setPassword(e.target.value)}
               required
             />
+            <Link to="/reset-password" className="text-sm text-primary hover:underline block text-right">
+              Forgot password?
+            </Link>
           </div>
 
           <Button type="submit" className="w-full" disabled={loading}>

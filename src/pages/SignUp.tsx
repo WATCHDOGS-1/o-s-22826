@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { z } from 'zod';
+import { Chrome } from 'lucide-react';
 
 const signupSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').max(20, 'Username must be less than 20 characters').regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores'),
@@ -92,7 +93,7 @@ const SignUp = () => {
 
         toast({
           title: 'Success',
-          description: 'Account created successfully!'
+          description: 'Account created successfully! Check your email for confirmation.',
         });
       }
     } catch (error: any) {
@@ -113,6 +114,26 @@ const SignUp = () => {
       setLoading(false);
     }
   };
+  
+  const handleGoogleSignUp = async () => {
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+            redirectTo: `${window.location.origin}/`,
+        },
+    });
+
+    if (error) {
+        toast({
+            title: 'Error',
+            description: error.message,
+            variant: 'destructive'
+        });
+        setLoading(false);
+    }
+    // Supabase handles redirect on success
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-secondary p-4">
@@ -120,6 +141,27 @@ const SignUp = () => {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-primary mb-2">OnlyFocus</h1>
           <p className="text-muted-foreground">Create your account</p>
+        </div>
+        
+        <Button 
+          onClick={handleGoogleSignUp} 
+          className="w-full mb-6 flex items-center justify-center gap-2" 
+          variant="outline"
+          disabled={loading}
+        >
+          <Chrome className="h-5 w-5" />
+          Continue with Google
+        </Button>
+        
+        <div className="relative mb-6">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t border-border" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-card px-2 text-muted-foreground">
+              Or sign up with email
+            </span>
+          </div>
         </div>
 
         <form onSubmit={handleSignUp} className="space-y-4">
