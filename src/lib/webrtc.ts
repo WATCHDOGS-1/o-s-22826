@@ -299,14 +299,21 @@ export class WebRTCManager {
       
       const peer = this.peers.get(peerId);
       if (peer) {
-        if (!peer.stream) {
-          peer.stream = event.streams[0];
-          console.log('Set remote stream for peer:', peerId);
-        } else {
-          // Add track to existing stream
-          peer.stream.addTrack(event.track);
-          console.log('Added track to existing stream for peer:', peerId);
+        // 1. Get the stream associated with the track
+        let remoteStream = event.streams.length > 0 ? event.streams[0] : peer.stream;
+
+        if (!remoteStream) {
+          // If no stream is associated yet, create a new one from the track
+          remoteStream = new MediaStream([event.track]);
+          console.log('Created new remote stream for peer:', peerId);
+        } else if (!remoteStream.getTrackById(event.track.id)) {
+          // If stream exists but track is new (e.g., renegotiation), add it
+          remoteStream.addTrack(event.track);
+          console.log('Added track to existing remote stream for peer:', peerId);
         }
+        
+        // 2. Update the peer object with the stream reference
+        peer.stream = remoteStream;
         this.notifyPeersUpdate();
       }
     };

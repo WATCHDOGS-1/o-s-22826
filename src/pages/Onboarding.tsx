@@ -67,16 +67,36 @@ const Onboarding = () => {
         return;
       }
 
-      // Insert new user profile into the 'users' table
-      const { error: insertError } = await supabase
+      // 1. Insert new user profile into the 'users' table and retrieve the DB ID
+      const { error: insertError, data: insertedUser } = await supabase
         .from('users')
         .insert({
           user_id: user.id,
           username: validated.username,
           display_name: validated.displayName
-        });
+        })
+        .select('id')
+        .single();
 
-      if (insertError) throw insertError;
+      if (insertError || !insertedUser) throw insertError || new Error("Failed to retrieve user ID.");
+      const dbUserId = insertedUser.id;
+      
+      // 2. Initialize user_stats
+      const { error: statsError } = await supabase.from('user_stats').insert({ user_id: dbUserId });
+      if (statsError) console.error("Error initializing user_stats:", statsError);
+      
+      // 3. Initialize user_settings with defaults
+      const { error: settingsError } = await supabase.from('user_settings').insert({ 
+          user_id: dbUserId,
+          daily_goal_minutes: 120,
+          weekly_goal_minutes: 840,
+          monthly_goal_minutes: 3600,
+          pomodoro_work_minutes: 25,
+          pomodoro_break_minutes: 5,
+          streak_maintenance_minutes: 25,
+      });
+      if (settingsError) console.error("Error initializing user_settings:", settingsError);
+
 
       toast({
         title: 'Welcome!',
@@ -94,9 +114,10 @@ const Onboarding = () => {
           variant: 'destructive'
         });
       } else {
+        console.error("Onboarding error:", error);
         toast({
           title: 'Error',
-          description: error.message,
+          description: 'Failed to set up profile. Please try again.',
           variant: 'destructive'
         });
       }
