@@ -7,13 +7,47 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "13.0.5"
   }
   public: {
     Tables: {
+      followers: {
+        Row: {
+          id: string
+          follower_id: string
+          following_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          follower_id: string
+          following_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          follower_id?: string
+          following_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "followers_follower_id_fkey"
+            columns: ["follower_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "followers_following_id_fkey"
+            columns: ["following_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       study_sessions: {
         Row: {
           date: string
@@ -53,6 +87,47 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      user_settings: {
+        Row: {
+            id: string;
+            user_id: string;
+            daily_goal_minutes: number;
+            weekly_goal_minutes: number;
+            monthly_goal_minutes: number;
+            pomodoro_work_minutes: number;
+            pomodoro_break_minutes: number;
+            streak_maintenance_minutes: number;
+        };
+        Insert: {
+            id?: string;
+            user_id: string;
+            daily_goal_minutes?: number;
+            weekly_goal_minutes?: number;
+            monthly_goal_minutes?: number;
+            pomodoro_work_minutes?: number;
+            pomodoro_break_minutes?: number;
+            streak_maintenance_minutes?: number;
+        };
+        Update: {
+            id?: string;
+            user_id?: string;
+            daily_goal_minutes?: number;
+            weekly_goal_minutes?: number;
+            monthly_goal_minutes?: number;
+            pomodoro_work_minutes?: number;
+            pomodoro_break_minutes?: number;
+            streak_maintenance_minutes?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "user_settings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
         ]
       }
       user_stats: {
@@ -96,24 +171,27 @@ export type Database = {
       users: {
         Row: {
           created_at: string | null
-          display_name: string | null
           id: string
           user_id: string
-          username: string | null
+          username: string
+          display_name: string | null
+          bio: string | null
         }
         Insert: {
           created_at?: string | null
-          display_name?: string | null
           id?: string
           user_id: string
-          username?: string | null
+          username: string
+          display_name?: string | null
+          bio?: string | null
         }
         Update: {
           created_at?: string | null
-          display_name?: string | null
           id?: string
           user_id?: string
-          username?: string | null
+          username?: string
+          display_name?: string | null
+          bio?: string | null
         }
         Relationships: []
       }
@@ -256,9 +334,3 @@ export type CompositeTypes<
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
-
-export const Constants = {
-  public: {
-    Enums: {},
-  },
-} as const

@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { z } from 'zod';
-import { Chrome } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 const signupSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').max(20, 'Username must be less than 20 characters').regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores'),
@@ -22,22 +22,13 @@ const SignUp = () => {
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        navigate('/home');
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        navigate('/home');
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+    if (!authLoading && user) {
+      navigate('/home');
+    }
+  }, [user, authLoading, navigate]);
 
   const checkUsernameAvailability = async (username: string): Promise<boolean> => {
     const { data, error } = await supabase
@@ -73,7 +64,8 @@ const SignUp = () => {
         options: {
           emailRedirectTo: `${window.location.origin}/`,
           data: {
-            username: validated.username
+            username: validated.username,
+            display_name: validated.username,
           }
         }
       });
@@ -93,8 +85,9 @@ const SignUp = () => {
 
         toast({
           title: 'Success',
-          description: 'Account created successfully! Check your email for confirmation.',
+          description: 'Account created successfully!'
         });
+        // The auth listener will redirect to /home
       }
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -114,25 +107,24 @@ const SignUp = () => {
       setLoading(false);
     }
   };
-  
-  const handleGoogleSignUp = async () => {
+
+  const handleSignUpWithGoogle = async () => {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-            redirectTo: `${window.location.origin}/`,
-        },
+      provider: 'google',
+      options: {
+        // Redirect to root path, HashRouter will handle the rest
+        redirectTo: `${window.location.origin}/`
+      }
     });
-
     if (error) {
-        toast({
-            title: 'Error',
-            description: error.message,
-            variant: 'destructive'
-        });
-        setLoading(false);
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive'
+      });
+      setLoading(false);
     }
-    // Supabase handles redirect on success
   };
 
   return (
@@ -141,27 +133,6 @@ const SignUp = () => {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-primary mb-2">OnlyFocus</h1>
           <p className="text-muted-foreground">Create your account</p>
-        </div>
-        
-        <Button 
-          onClick={handleGoogleSignUp} 
-          className="w-full mb-6 flex items-center justify-center gap-2" 
-          variant="outline"
-          disabled={loading}
-        >
-          <Chrome className="h-5 w-5" />
-          Continue with Google
-        </Button>
-        
-        <div className="relative mb-6">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t border-border" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-card px-2 text-muted-foreground">
-              Or sign up with email
-            </span>
-          </div>
         </div>
 
         <form onSubmit={handleSignUp} className="space-y-4">
@@ -204,14 +175,29 @@ const SignUp = () => {
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Creating account...' : 'Sign Up'}
           </Button>
-
-          <div className="text-center text-sm">
-            <span className="text-muted-foreground">Already have an account? </span>
-            <Link to="/signin" className="text-primary hover:underline">
-              Sign In
-            </Link>
-          </div>
         </form>
+
+        <div className="relative my-6">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-card px-2 text-muted-foreground">
+              Or continue with
+            </span>
+          </div>
+        </div>
+
+        <Button variant="outline" className="w-full" onClick={handleSignUpWithGoogle} disabled={loading}>
+          Sign Up with Google
+        </Button>
+
+        <div className="text-center text-sm mt-4">
+          <span className="text-muted-foreground">Already have an account? </span>
+          <Link to="/signin" className="text-primary hover:underline">
+            Sign In
+          </Link>
+        </div>
       </Card>
     </div>
   );

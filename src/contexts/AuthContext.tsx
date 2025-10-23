@@ -1,65 +1,80 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
-import { getUserId, setDisplayName } from '@/lib/userStorage';
-import { ensureUser } from '@/lib/studyTracker';
+
+export interface UserProfile {
+  id: string; // DB ID
+  user_id: string; // Auth ID
+  username: string;
+  display_name: string;
+  bio: string;
+}
 
 interface AuthContextType {
   user: User | null;
+  profile: UserProfile | null;
   loading: boolean;
-  authId: string; // Supabase Auth ID (user.id)
-  isAnonymous: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  profile: null,
+  loading: true,
+});
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [authId, setAuthId] = useState(getUserId()); // Starts with anonymous ID
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      
-      if (currentUser) {
-        // If logged in, use the real Auth ID
-        setAuthId(currentUser.id);
-        
-        // Ensure user exists in our DB and update display name if necessary
-        const displayName = currentUser.user_metadata.display_name || currentUser.user_metadata.full_name || currentUser.email?.split('@')[0] || 'Anonymous';
-        setDisplayName(displayName);
-        await ensureUser(currentUser.id, displayName);
-        
-      } else {
-        // If logged out, revert to anonymous ID (or keep the existing one if it was anonymous)
-        setAuthId(getUserId());
-      }
-      
+    const getSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+      setLoading(false);
+    };
+
+    getSession();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    // Initial check
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      if (currentUser) {
-        setAuthId(currentUser.id);
-      }
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
   }, []);
-  
-  const isAnonymous = !user;
 
-  return (
-    <AuthContext.Provider value={{ user, loading, authId, isAnonymous }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (user) {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
+        
+        if (data) {
+          setProfile(data as UserProfile);
+        } else if (error) {
+          console.error("Error fetching profile:", error);
+        }
+      } else {
+        setProfile(null);
+      }
+    };
+
+    fetchProfile();
+  }, [user]);
+
+  const value = {
+    user,
+    profile,
+    loading,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {

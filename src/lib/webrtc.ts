@@ -20,9 +20,7 @@ export class WebRTCManager {
   private userId: string = '';
   private displayName: string = '';
   private onPeersUpdate?: (peers: Peer[]) => void;
-  private wasVideoEnabledBeforeScreenShare: boolean = true;
   private wasVideoEnabled: boolean = false;
-  private wasScreenSharing: boolean = false;
   private visibilityChangeHandler: (() => void) | null = null;
 
   constructor(
@@ -39,56 +37,16 @@ export class WebRTCManager {
 
   async init() {
     try {
-      // Get video and audio stream but mute audio completely
-      try {
-        this.localStream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            width: { ideal: 1280, max: 1920 },
-            height: { ideal: 720, max: 1080 },
-            facingMode: 'user',
-            frameRate: { ideal: 30, max: 60 }
-          },
-          audio: true
-        });
-        
-        // Immediately mute all audio tracks so no audio is transmitted
-        this.localStream.getAudioTracks().forEach(track => {
-          track.enabled = false;
-        });
-        
-        console.log('Local media stream obtained with', 
-          this.localStream.getVideoTracks().length, 'video tracks');
-      } catch (mediaError) {
-        console.error('Could not access camera/microphone:', mediaError);
-        // Try video only as fallback
-        try {
-          this.localStream = await navigator.mediaDevices.getUserMedia({
-            video: { 
-              width: { ideal: 1280 },
-              height: { ideal: 720 }
-            },
-            audio: true
-          });
-          
-          // Mute audio
-          this.localStream.getAudioTracks().forEach(track => {
-            track.enabled = false;
-          });
-          console.log('Fallback: Video-only stream obtained');
-        } catch (fallbackError) {
-          console.error('Could not access camera:', fallbackError);
-          // Create an empty MediaStream so the rest of the code works
-          this.localStream = new MediaStream();
-        }
-      }
-
+      // Create an empty MediaStream to start. User will enable camera manually.
+      this.localStream = new MediaStream();
+      
       // Track initial state
-      this.wasVideoEnabled = this.localStream.getVideoTracks().length > 0;
+      this.wasVideoEnabled = false;
 
-      // Setup track ended handlers
+      // Setup track ended handlers (will be empty initially, but good to have)
       this.setupTrackEndedHandlers();
 
-      // Setup page visibility handler to restart streams
+      // Setup page visibility handler
       this.setupVisibilityHandler();
 
       // Setup Supabase Realtime channel for signaling
@@ -184,49 +142,36 @@ export class WebRTCManager {
     if (videoTrack && videoTrack.readyState === 'ended' && this.wasVideoEnabled) {
       console.log('Restarting video track after tab became visible');
       try {
-        if (this.wasScreenSharing) {
-          // Don't auto-restart screen share, user needs to click the button again
-          console.log('Screen share was active but ended - user needs to restart manually');
-          this.localStream.removeTrack(videoTrack);
-          
-          // Notify peers to remove video
-          this.peers.forEach(peer => {
-            const sender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
-            if (sender) {
-              sender.replaceTrack(null);
-            }
-          });
-        } else {
-          // Restart camera
-          const newStream = await navigator.mediaDevices.getUserMedia({
-            video: { 
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-              facingMode: 'user'
-            }
-          });
-          
-          const newVideoTrack = newStream.getVideoTracks()[0];
-          this.localStream.removeTrack(videoTrack);
-          this.localStream.addTrack(newVideoTrack);
-          
-          // Setup ended handler for new track
-          newVideoTrack.onended = () => {
-            console.warn('Video track ended unexpectedly');
-          };
-          
-          // Update peer connections
-          this.peers.forEach(peer => {
-            const sender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
-            if (sender) {
-              sender.replaceTrack(newVideoTrack).catch(e => {
-                console.error('Error replacing video track:', e);
-              });
-            }
-          });
-          
-          console.log('Video track restarted successfully');
-        }
+        // Restart camera
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: 'user'
+          }
+        });
+        
+        const newVideoTrack = newStream.getVideoTracks()[0];
+        this.localStream.removeTrack(videoTrack);
+        videoTrack.stop(); // Ensure old track is fully stopped
+        this.localStream.addTrack(newVideoTrack);
+        
+        // Setup ended handler for new track
+        newVideoTrack.onended = () => {
+          console.warn('Video track ended unexpectedly');
+        };
+        
+        // Update peer connections
+        this.peers.forEach(peer => {
+          const sender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) {
+            sender.replaceTrack(newVideoTrack).catch(e => {
+              console.error('Error replacing video track:', e);
+            });
+          }
+        });
+        
+        console.log('Video track restarted successfully');
       } catch (error) {
         console.error('Error restarting video track:', error);
       }
@@ -593,14 +538,14 @@ export class WebRTCManager {
     const videoTrack = this.localStream.getVideoTracks()[0];
     
     // If track exists and is enabled, turn it OFF
-    if (videoTrack?.enabled) {
-      // Stop the track immediately to turn off the camera light
+    if (videoTrack) {
+      // 1. Stop the track immediately to turn off the camera light
       videoTrack.stop();
       this.localStream.removeTrack(videoTrack);
       
       console.log('Video track stopped and removed');
       
-      // Update peer connections to remove video
+      // 2. Update peer connections to remove video
       this.peers.forEach(peer => {
         const sender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
         if (sender) {
@@ -608,16 +553,11 @@ export class WebRTCManager {
         }
       });
       
+      this.wasVideoEnabled = false;
       return false;
     } else {
-      // Turn ON: get new video stream (either no track or track is disabled)
+      // Turn ON: get new video stream
       try {
-        // If there's a disabled track, remove it first
-        if (videoTrack) {
-          videoTrack.stop();
-          this.localStream.removeTrack(videoTrack);
-        }
-        
         const newStream = await navigator.mediaDevices.getUserMedia({
           video: { width: 1280, height: 720 }
         });
@@ -645,9 +585,11 @@ export class WebRTCManager {
           await this.renegotiate(peerId);
         }
         
+        this.wasVideoEnabled = true;
         return true;
       } catch (error) {
         console.error('Error starting video:', error);
+        this.wasVideoEnabled = false;
         return false;
       }
     }
@@ -658,128 +600,6 @@ export class WebRTCManager {
     return false;
   }
 
-  async toggleScreenShare() {
-    if (!this.localStream) return false;
-
-    const videoTrack = this.localStream.getVideoTracks()[0];
-    
-    // Check if currently sharing screen (track has specific constraints)
-    if (videoTrack && (videoTrack as any).getSettings?.().displaySurface) {
-      // Stop screen share, go back to camera only if video was enabled before
-      videoTrack.stop();
-      this.localStream.removeTrack(videoTrack);
-      
-      // Only restore camera if it was enabled before screen sharing
-      if (this.wasVideoEnabledBeforeScreenShare) {
-        try {
-          const cameraStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 1280, height: 720 }
-          });
-          
-          const newVideoTrack = cameraStream.getVideoTracks()[0];
-          this.localStream.addTrack(newVideoTrack);
-          
-          // Update peer connections
-          this.peers.forEach(peer => {
-            const sender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
-            if (sender) {
-              sender.replaceTrack(newVideoTrack);
-            }
-          });
-        } catch (error) {
-          console.error('Error returning to camera:', error);
-        }
-      } else {
-        // Update peer connections to remove video
-        this.peers.forEach(peer => {
-          const sender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
-          if (sender) {
-            sender.replaceTrack(null);
-          }
-        });
-      }
-      
-      return false; // Not sharing anymore
-    } else {
-      // Start screen share - remember current video state
-      this.wasVideoEnabledBeforeScreenShare = videoTrack?.enabled || false;
-      
-      try {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: { width: 1920, height: 1080 },
-          audio: false
-        });
-        
-        const screenTrack = screenStream.getVideoTracks()[0];
-        
-        // Stop current video track
-        if (videoTrack) {
-          videoTrack.stop();
-          this.localStream.removeTrack(videoTrack);
-        }
-        
-        this.localStream.addTrack(screenTrack);
-        
-        // Update peer connections
-        const peersNeedingRenegotiation: string[] = [];
-        this.peers.forEach((peer, peerId) => {
-          if (!peer.peerConnection) return;
-          
-          const sender = peer.peerConnection.getSenders().find(s => s.track?.kind === 'video' || s.track === null);
-          if (sender) {
-            sender.replaceTrack(screenTrack);
-          } else {
-            peer.peerConnection.addTrack(screenTrack, this.localStream!);
-            peersNeedingRenegotiation.push(peerId);
-          }
-        });
-
-        // Renegotiate with peers that needed new tracks added
-        for (const peerId of peersNeedingRenegotiation) {
-          await this.renegotiate(peerId);
-        }
-
-        // Handle when user stops sharing via browser UI
-        screenTrack.onended = async () => {
-          this.localStream?.removeTrack(screenTrack);
-          
-          // Only restore camera if it was enabled before screen sharing
-          if (this.wasVideoEnabledBeforeScreenShare) {
-            try {
-              const cameraStream = await navigator.mediaDevices.getUserMedia({
-                video: { width: 1280, height: 720 }
-              });
-              const newVideoTrack = cameraStream.getVideoTracks()[0];
-              this.localStream?.addTrack(newVideoTrack);
-              
-              this.peers.forEach(peer => {
-                const sender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
-                if (sender) {
-                  sender.replaceTrack(newVideoTrack);
-                }
-              });
-            } catch (e) {
-              console.error('Error returning to camera after screen share ended:', e);
-            }
-          } else {
-            // Remove video track from peer connections
-            this.peers.forEach(peer => {
-              const sender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
-              if (sender) {
-                sender.replaceTrack(null);
-              }
-            });
-          }
-        };
-        
-        return true; // Now sharing
-      } catch (error) {
-        console.error('Error starting screen share:', error);
-        return false;
-      }
-    }
-  }
-
   disconnect() {
     // Remove visibility handler
     if (this.visibilityChangeHandler) {
@@ -787,10 +607,10 @@ export class WebRTCManager {
       this.visibilityChangeHandler = null;
     }
 
-    // Stop local stream first - this ensures camera light turns off
+    // Stop local stream tracks explicitly
     if (this.localStream) {
       this.localStream.getTracks().forEach(track => {
-        console.log('Stopping track:', track.kind, track.label);
+        console.log('Stopping track on disconnect:', track.kind, track.label);
         track.stop();
       });
       this.localStream = null;

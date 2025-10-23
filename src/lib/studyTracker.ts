@@ -7,11 +7,22 @@ export interface UserStats {
   last_study_date: string | null;
 }
 
-export const ensureUser = async (userId: string, displayName?: string) => {
-  // Upsert user to avoid duplicate key errors
+export const getDisplayUsername = async (userId: string): Promise<string> => {
+  const { data } = await (supabase as any)
+    .from('users')
+    .select('display_name, username')
+    .eq('user_id', userId)
+    .maybeSingle();
+  
+  return data?.display_name || data?.username || 'Anonymous';
+};
+
+export const ensureUser = async (userId: string) => {
+  const upsertData: { user_id: string } = { user_id: userId };
+  
   const { error } = await (supabase as any)
     .from('users')
-    .upsert({ user_id: userId, display_name: displayName }, { onConflict: 'user_id' });
+    .upsert(upsertData, { onConflict: 'user_id', ignoreDuplicates: true });
 
   if (error) {
     console.error('Error upserting user:', error);
@@ -23,28 +34,19 @@ export const saveStudySession = async (
   roomId: string,
   minutesStudied: number
 ) => {
-  console.log('Saving study session:', { userId, roomId, minutesStudied });
-  
-  // Get user's database ID
   const { data: user, error: userError } = await (supabase as any)
     .from('users')
     .select('id')
     .eq('user_id', userId)
     .maybeSingle();
 
-  if (userError) {
-    console.error('Error fetching user:', userError);
-    return;
-  }
-
-  if (!user) {
-    console.error('User not found:', userId);
+  if (userError || !user) {
+    console.error('User not found for saving session:', userId);
     return;
   }
 
   const today = new Date().toISOString().split('T')[0];
 
-  // Check if session already exists for today
   const { data: existingSession } = await (supabase as any)
     .from('study_sessions')
     .select('id, minutes_studied')
@@ -54,7 +56,6 @@ export const saveStudySession = async (
     .maybeSingle();
 
   if (existingSession) {
-    // Update existing session
     const { error } = await (supabase as any)
       .from('study_sessions')
       .update({
@@ -63,13 +64,8 @@ export const saveStudySession = async (
       })
       .eq('id', existingSession.id);
 
-    if (error) {
-      console.error('Error updating session:', error);
-    } else {
-      console.log('Study session updated successfully');
-    }
+    if (error) console.error('Error updating session:', error);
   } else {
-    // Insert new session
     const { error } = await (supabase as any)
       .from('study_sessions')
       .insert([{
@@ -80,26 +76,21 @@ export const saveStudySession = async (
         date: today
       }]);
 
-    if (error) {
-      console.error('Error saving session:', error);
-    } else {
-      console.log('Study session saved successfully');
-    }
+    if (error) console.error('Error saving session:', error);
   }
   
-  // Update streak
   await updateStreak(user.id);
 };
 
 export const updateStreak = async (userDbId: string) => {
-  const { data: stats, error } = await (supabase as any)
+  const { data: stats, error: statsError } = await (supabase as any)
     .from('user_stats')
     .select('*')
     .eq('user_id', userDbId)
     .maybeSingle();
 
-  if (error) {
-    console.error('Error fetching user stats:', error);
+  if (statsError) {
+    console.error('Error fetching user stats:', statsError);
     return;
   }
   
@@ -108,9 +99,16 @@ export const updateStreak = async (userDbId: string) => {
     return;
   }
 
+  const { data: settings } = await (supabase as any)
+    .from('user_settings')
+    .select('streak_maintenance_minutes')
+    .eq('user_id', userDbId)
+    .single();
+
+  const streakGoal = settings?.streak_maintenance_minutes || 25;
+
   const today = new Date().toISOString().split('T')[0];
   
-  // Check if user studied at least 25 minutes today
   const { data: todaySession } = await (supabase as any)
     .from('study_sessions')
     .select('minutes_studied')
@@ -118,9 +116,7 @@ export const updateStreak = async (userDbId: string) => {
     .eq('date', today)
     .maybeSingle();
   
-  // Only update streak if user studied at least 25 minutes
-  if (!todaySession || todaySession.minutes_studied < 25) {
-    console.log('User has not studied 25 minutes yet today');
+  if (!todaySession || todaySession.minutes_studied < streakGoal) {
     return;
   }
 
@@ -133,13 +129,10 @@ export const updateStreak = async (userDbId: string) => {
     const diffDays = Math.floor((todayDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
 
     if (diffDays === 1) {
-      // Consecutive day
       newStreak = stats.current_streak + 1;
     } else if (diffDays > 1) {
-      // Streak broken
       newStreak = 1;
     }
-    // If diffDays === 0, it's the same day, keep current streak
   } else {
     newStreak = 1;
   }
@@ -155,11 +148,7 @@ export const updateStreak = async (userDbId: string) => {
     })
     .eq('user_id', userDbId);
 
-  if (updateError) {
-    console.error('Error updating streak:', updateError);
-  } else {
-    console.log('Streak updated successfully:', { newStreak, longestStreak });
-  }
+  if (updateError) console.error('Error updating streak:', updateError);
 };
 
 export const getUserStats = async (userId: string): Promise<UserStats | null> => {
@@ -190,39 +179,10 @@ export const getUserStats = async (userId: string): Promise<UserStats | null> =>
 };
 
 export const getWeeklyLeaderboard = async () => {
-  const oneWeekAgo = new Date();
-  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-  const { data } = await (supabase as any)
-    .from('study_sessions')
-    .select(`
-      user_id,
-      minutes_studied,
-      users!inner (
-        user_id,
-        display_name
-      )
-    `)
-    .gte('date', oneWeekAgo.toISOString().split('T')[0])
-    .order('minutes_studied', { ascending: false });
-
-  if (!data) return [];
-
-  // Aggregate minutes by user
-  const userTotals = data.reduce((acc: any, session: any) => {
-    const userKey = session.users.user_id;
-    if (!acc[userKey]) {
-      acc[userKey] = {
-        user_id: session.users.user_id,
-        display_name: session.users.display_name || 'Anonymous',
-        total_minutes: 0
-      };
-    }
-    acc[userKey].total_minutes += session.minutes_studied;
-    return acc;
-  }, {});
-
-  return Object.values(userTotals)
-    .sort((a: any, b: any) => b.total_minutes - a.total_minutes)
-    .slice(0, 10);
+  const { data, error } = await supabase.rpc('get_weekly_leaderboard');
+  if (error) {
+    console.error("Error fetching weekly leaderboard", error);
+    return [];
+  }
+  return data;
 };

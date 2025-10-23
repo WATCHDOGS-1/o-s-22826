@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { TrendingUp, Edit2, Check } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface ProgressStatsProps {
-  userId: string; // This is now the Supabase Auth ID (user.id)
+  userId: string; // This should be the auth user id
   autoRefresh?: boolean;
 }
 
@@ -20,119 +18,94 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
   const [dailyGoal, setDailyGoal] = useState(120);
   const [weeklyGoal, setWeeklyGoal] = useState(840);
   const [monthlyGoal, setMonthlyGoal] = useState(3600);
-  
-  const [editingDaily, setEditingDaily] = useState(false);
-  const [editingWeekly, setEditingWeekly] = useState(false);
-  const [editingMonthly, setEditingMonthly] = useState(false);
-  
-  const [tempDailyGoal, setTempDailyGoal] = useState('120');
-  const [tempWeeklyGoal, setTempWeeklyGoal] = useState('840');
-  const [tempMonthlyGoal, setTempMonthlyGoal] = useState('3600');
 
   useEffect(() => {
-    // Load goals from localStorage
-    const savedDailyGoal = localStorage.getItem('daily_goal');
-    const savedWeeklyGoal = localStorage.getItem('weekly_goal');
-    const savedMonthlyGoal = localStorage.getItem('monthly_goal');
+    loadData();
     
-    if (savedDailyGoal) {
-      setDailyGoal(parseInt(savedDailyGoal));
-      setTempDailyGoal(savedDailyGoal);
-    }
-    if (savedWeeklyGoal) {
-      setWeeklyGoal(parseInt(savedWeeklyGoal));
-      setTempWeeklyGoal(savedWeeklyGoal);
-    }
-    if (savedMonthlyGoal) {
-      setMonthlyGoal(parseInt(savedMonthlyGoal));
-      setTempMonthlyGoal(savedMonthlyGoal);
-    }
-    
-    // Load progress directly
-    if (userId) {
-      loadProgress(userId);
-    }
-    
-    // Subscribe to realtime updates
-    const channel = supabase
-      .channel('study_sessions_updates')
+    const sessionsChannel = supabase
+      .channel(`study_sessions_updates_for_${userId}`)
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'study_sessions'
-        },
-        () => {
-          if (userId) {
-            loadProgress(userId);
-          }
-        }
+        { event: '*', schema: 'public', table: 'study_sessions' },
+        () => loadProgress()
+      )
+      .subscribe();
+
+    const settingsChannel = supabase
+      .channel(`user_settings_updates_for_${userId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'user_settings' },
+        () => loadData()
       )
       .subscribe();
     
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(sessionsChannel);
+      supabase.removeChannel(settingsChannel);
     };
   }, [userId, autoRefresh]);
 
-  const loadProgress = async (currentUserId: string) => {
+  const loadData = async () => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      
-      // First get the database user ID (id column) using the Supabase Auth ID (user_id column)
-      const { data: user, error: userError } = await (supabase as any)
+      const { data: user, error: userError } = await supabase
         .from('users')
         .select('id')
-        .eq('user_id', currentUserId)
+        .eq('user_id', userId)
         .maybeSingle();
       
       if (userError || !user) {
-        console.error('Error fetching user DB ID:', userError);
+        console.error('Error fetching user:', userError);
         setIsLoading(false);
         return;
       }
-
       const dbUserId = user.id;
-      const today = new Date().toISOString().split('T')[0];
-      
-      // Calculate start of the week (Sunday)
-      const now = new Date();
-      const dayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday
-      const diffToSunday = dayOfWeek === 0 ? 0 : dayOfWeek;
-      const weekAgo = new Date(now);
-      weekAgo.setDate(now.getDate() - diffToSunday);
-      const weekStart = weekAgo.toISOString().split('T')[0];
-      
-      // Calculate start of the month
-      const monthAgo = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthStart = monthAgo.toISOString().split('T')[0];
 
-      // Daily
-      const { data: dailyData } = await (supabase.rpc as any)(
-        'get_daily_minutes',
-        { p_user_id: dbUserId, p_date: today }
-      );
-      setDailyMinutes((dailyData as number) || 0);
-
-      // Weekly
-      const { data: weeklyData } = await (supabase.rpc as any)(
-        'get_period_minutes',
-        { p_user_id: dbUserId, p_start_date: weekStart }
-      );
-      setWeeklyMinutes((weeklyData as number) || 0);
-
-      // Monthly
-      const { data: monthlyData } = await (supabase.rpc as any)(
-        'get_period_minutes',
-        { p_user_id: dbUserId, p_start_date: monthStart }
-      );
-      setMonthlyMinutes((monthlyData as number) || 0);
+      const { data: settings } = await supabase
+        .from('user_settings')
+        .select('daily_goal_minutes, weekly_goal_minutes, monthly_goal_minutes')
+        .eq('user_id', dbUserId)
+        .maybeSingle();
       
+      if (settings) {
+        setDailyGoal(settings.daily_goal_minutes);
+        setWeeklyGoal(settings.weekly_goal_minutes);
+        setMonthlyGoal(settings.monthly_goal_minutes);
+      }
+
+      await loadProgress(dbUserId);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadProgress = async (dbUserIdToUse?: string) => {
+    try {
+      let dbUserId = dbUserIdToUse;
+      if (!dbUserId) {
+        const { data: user } = await supabase.from('users').select('id').eq('user_id', userId).maybeSingle();
+        if (user) dbUserId = user.id;
+      }
+      if (!dbUserId) return;
+
+      const today = new Date().toISOString().split('T')[0];
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      const { data: dailyData } = await supabase.rpc('get_daily_minutes', { p_user_id: dbUserId, p_date: today });
+      setDailyMinutes(dailyData || 0);
+
+      const { data: weeklyData } = await supabase.rpc('get_period_minutes', { p_user_id: dbUserId, p_start_date: weekAgo });
+      setWeeklyMinutes(weeklyData || 0);
+
+      const { data: monthlyData } = await supabase.rpc('get_period_minutes', { p_user_id: dbUserId, p_start_date: monthAgo });
+      setMonthlyMinutes(monthlyData || 0);
+      
     } catch (error) {
       console.error('Error loading progress:', error);
-      setIsLoading(false);
     }
   };
 
@@ -140,25 +113,6 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
     const hours = Math.floor(mins / 60);
     const minutes = mins % 60;
     return `${hours}h ${minutes}m`;
-  };
-  
-  const saveGoal = (type: 'daily' | 'weekly' | 'monthly', value: string) => {
-    const numValue = parseInt(value);
-    if (isNaN(numValue) || numValue <= 0) return;
-    
-    if (type === 'daily') {
-      setDailyGoal(numValue);
-      localStorage.setItem('daily_goal', value);
-      setEditingDaily(false);
-    } else if (type === 'weekly') {
-      setWeeklyGoal(numValue);
-      localStorage.setItem('weekly_goal', value);
-      setEditingWeekly(false);
-    } else {
-      setMonthlyGoal(numValue);
-      localStorage.setItem('monthly_goal', value);
-      setEditingMonthly(false);
-    }
   };
 
   return (
@@ -172,138 +126,39 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
         <div className="text-center py-8 text-muted-foreground">Loading...</div>
       ) : (
         <div className="space-y-6">
-        <div>
-          <div className="flex justify-between items-center text-sm mb-2">
-            <span className="text-foreground font-medium">Daily</span>
-            <div className="flex items-center gap-2">
-              <span className="text-purple-400">
-                {formatMinutes(dailyMinutes)} / 
-              </span>
-              {editingDaily ? (
-                <div className="flex items-center gap-1">
-                  <Input
-                    type="number"
-                    value={tempDailyGoal}
-                    onChange={(e) => setTempDailyGoal(e.target.value)}
-                    className="w-20 h-7 text-xs"
-                    min="1"
-                  />
-                  <span className="text-xs text-muted-foreground">min</span>
-                  <Button 
-                    size="icon" 
-                    variant="ghost" 
-                    className="h-7 w-7"
-                    onClick={() => saveGoal('daily', tempDailyGoal)}
-                  >
-                    <Check className="h-3 w-3" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1">
-                  <span className="text-muted-foreground">{formatMinutes(dailyGoal)}</span>
-                  <Button 
-                    size="icon" 
-                    variant="ghost" 
-                    className="h-7 w-7"
-                    onClick={() => setEditingDaily(true)}
-                  >
-                    <Edit2 className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
+          <div>
+            <div className="flex justify-between items-center text-sm mb-2">
+              <span className="text-foreground font-medium">Daily</span>
+              <div className="flex items-center gap-2">
+                <span className="text-purple-400">{formatMinutes(dailyMinutes)} /</span>
+                <span className="text-muted-foreground">{formatMinutes(dailyGoal)}</span>
+              </div>
             </div>
+            <Progress value={(dailyMinutes / dailyGoal) * 100} className="h-2 [&>div]:bg-purple-500" />
           </div>
-          <Progress value={(dailyMinutes / dailyGoal) * 100} className="h-2 [&>div]:bg-purple-500" />
-        </div>
 
-        <div>
-          <div className="flex justify-between items-center text-sm mb-2">
-            <span className="text-foreground font-medium">Weekly</span>
-            <div className="flex items-center gap-2">
-              <span className="text-purple-400">
-                {formatMinutes(weeklyMinutes)} / 
-              </span>
-              {editingWeekly ? (
-                <div className="flex items-center gap-1">
-                  <Input
-                    type="number"
-                    value={tempWeeklyGoal}
-                    onChange={(e) => setTempWeeklyGoal(e.target.value)}
-                    className="w-20 h-7 text-xs"
-                    min="1"
-                  />
-                  <span className="text-xs text-muted-foreground">min</span>
-                  <Button 
-                    size="icon" 
-                    variant="ghost" 
-                    className="h-7 w-7"
-                    onClick={() => saveGoal('weekly', tempWeeklyGoal)}
-                  >
-                    <Check className="h-3 w-3" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1">
-                  <span className="text-muted-foreground">{formatMinutes(weeklyGoal)}</span>
-                  <Button 
-                    size="icon" 
-                    variant="ghost" 
-                    className="h-7 w-7"
-                    onClick={() => setEditingWeekly(true)}
-                  >
-                    <Edit2 className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
+          <div>
+            <div className="flex justify-between items-center text-sm mb-2">
+              <span className="text-foreground font-medium">Weekly</span>
+              <div className="flex items-center gap-2">
+                <span className="text-purple-400">{formatMinutes(weeklyMinutes)} /</span>
+                <span className="text-muted-foreground">{formatMinutes(weeklyGoal)}</span>
+              </div>
             </div>
+            <Progress value={(weeklyMinutes / weeklyGoal) * 100} className="h-2 [&>div]:bg-purple-500" />
           </div>
-          <Progress value={(weeklyMinutes / weeklyGoal) * 100} className="h-2 [&>div]:bg-purple-500" />
-        </div>
 
-        <div>
-          <div className="flex justify-between items-center text-sm mb-2">
-            <span className="text-foreground font-medium">Monthly</span>
-            <div className="flex items-center gap-2">
-              <span className="text-purple-400">
-                {formatMinutes(monthlyMinutes)} / 
-              </span>
-              {editingMonthly ? (
-                <div className="flex items-center gap-1">
-                  <Input
-                    type="number"
-                    value={tempMonthlyGoal}
-                    onChange={(e) => setTempMonthlyGoal(e.target.value)}
-                    className="w-20 h-7 text-xs"
-                    min="1"
-                  />
-                  <span className="text-xs text-muted-foreground">min</span>
-                  <Button 
-                    size="icon" 
-                    variant="ghost" 
-                    className="h-7 w-7"
-                    onClick={() => saveGoal('monthly', tempMonthlyGoal)}
-                  >
-                    <Check className="h-3 w-3" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1">
-                  <span className="text-muted-foreground">{formatMinutes(monthlyGoal)}</span>
-                  <Button 
-                    size="icon" 
-                    variant="ghost" 
-                    className="h-7 w-7"
-                    onClick={() => setEditingMonthly(true)}
-                  >
-                    <Edit2 className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
+          <div>
+            <div className="flex justify-between items-center text-sm mb-2">
+              <span className="text-foreground font-medium">Monthly</span>
+              <div className="flex items-center gap-2">
+                <span className="text-purple-400">{formatMinutes(monthlyMinutes)} /</span>
+                <span className="text-muted-foreground">{formatMinutes(monthlyGoal)}</span>
+              </div>
             </div>
+            <Progress value={(monthlyMinutes / monthlyGoal) * 100} className="h-2 [&>div]:bg-purple-500" />
           </div>
-          <Progress value={(monthlyMinutes / monthlyGoal) * 100} className="h-2 [&>div]:bg-purple-500" />
         </div>
-      </div>
       )}
     </Card>
   );
