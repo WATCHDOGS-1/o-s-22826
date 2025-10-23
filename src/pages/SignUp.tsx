@@ -108,6 +108,24 @@ const SignUp = () => {
     }
   };
 
+  const handleSignUpWithGoogle = async () => {
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/home`
+      }
+    });
+    if (error) {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive'
+      });
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-secondary p-4">
       <Card className="w-full max-w-md p-8">
@@ -156,14 +174,29 @@ const SignUp = () => {
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Creating account...' : 'Sign Up'}
           </Button>
-
-          <div className="text-center text-sm">
-            <span className="text-muted-foreground">Already have an account? </span>
-            <Link to="/signin" className="text-primary hover:underline">
-              Sign In
-            </Link>
-          </div>
         </form>
+
+        <div className="relative my-6">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-card px-2 text-muted-foreground">
+              Or continue with
+            </span>
+          </div>
+        </div>
+
+        <Button variant="outline" className="w-full" onClick={handleSignUpWithGoogle} disabled={loading}>
+          Sign Up with Google
+        </Button>
+
+        <div className="text-center text-sm mt-4">
+          <span className="text-muted-foreground">Already have an account? </span>
+          <Link to="/signin" className="text-primary hover:underline">
+            Sign In
+          </Link>
+        </div>
       </Card>
     </div>
   );
