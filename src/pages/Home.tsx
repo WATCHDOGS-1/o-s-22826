@@ -1,43 +1,42 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { BookOpen, Users, Trophy, Clock, LogOut } from 'lucide-react';
+import { setDisplayName } from '@/lib/userStorage';
 import { supabase } from '@/integrations/supabase/client';
 
 const Home = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
-  // Removed displayNameInput state
+  const [displayNameInput, setDisplayNameInput] = useState('');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate('/signin');
-      } else {
-        setUser(session.user);
-      }
+      setUser(session?.user || null);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session) {
-        navigate('/signin');
-      } else {
-        setUser(session.user);
-      }
+      setUser(session?.user || null);
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, []);
 
   const handleJoinRoom = () => {
-    // No need to setDisplayName anymore, it relies on DB username
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+    if (displayNameInput.trim()) {
+      setDisplayName(displayNameInput.trim());
+    }
     navigate('/study/global-room');
   };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    navigate('/');
   };
 
   return (
@@ -64,14 +63,24 @@ const Home = () => {
         {/* Main Card */}
         <Card className="max-w-lg mx-auto p-8 bg-gradient-to-br from-card to-secondary border-border mb-12">
           <div className="space-y-6">
-            <p className="text-sm text-muted-foreground text-center">
-              You will join the room using your permanent username.
-            </p>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">
+                Display Name (optional)
+              </label>
+              <Input
+                type="text"
+                placeholder="Enter your name"
+                value={displayNameInput}
+                onChange={(e) => setDisplayNameInput(e.target.value)}
+                className="w-full"
+              />
+            </div>
+
             <Button
               onClick={handleJoinRoom}
               className="w-full bg-primary hover:bg-primary/90 text-white font-semibold h-12"
             >
-              Join Global Study Room
+              {user ? 'Join Global Study Room' : 'Sign In to Join'}
             </Button>
           </div>
         </Card>
@@ -104,30 +113,12 @@ const Home = () => {
         </div>
 
         {/* Navigation */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto mt-12">
-          <Button 
-            onClick={() => navigate('/leaderboard')} 
-            variant="outline"
-            className="h-16 flex flex-col items-center justify-center gap-1"
-          >
-            <Trophy className="h-5 w-5" />
-            <span>Leaderboard</span>
+        <div className="flex justify-center gap-4 mt-12">
+          <Button onClick={() => navigate('/leaderboard')} variant="outline">
+            View Leaderboard
           </Button>
-          <Button 
-            onClick={() => navigate('/profile')} 
-            variant="outline"
-            className="h-16 flex flex-col items-center justify-center gap-1"
-          >
-            <Users className="h-5 w-5" />
-            <span>Goals & Progress</span>
-          </Button>
-          <Button 
-            onClick={() => navigate('/profile')} 
-            variant="outline"
-            className="h-16 flex flex-col items-center justify-center gap-1"
-          >
-            <BookOpen className="h-5 w-5" />
-            <span>My Stats</span>
+          <Button onClick={() => navigate('/profile')} variant="outline">
+            My Profile
           </Button>
         </div>
       </div>
