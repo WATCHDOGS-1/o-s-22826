@@ -2,9 +2,9 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { LogOut, Video, VideoOff, Monitor } from 'lucide-react';
-import { getUserId, getDisplayName } from '@/lib/userStorage';
+import { getUserId } from '@/lib/userStorage';
 import { WebRTCManager, Peer } from '@/lib/webrtc';
-import { saveStudySession, ensureUser, getUserStats } from '@/lib/studyTracker';
+import { saveStudySession, ensureUser, getUserStats, getDisplayUsername } from '@/lib/studyTracker';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import VideoGrid from '@/components/VideoGrid';
@@ -29,12 +29,12 @@ const StudyRoom = () => {
   const [isPaused, setIsPaused] = useState(false);
   const [todaysTotalMinutes, setTodaysTotalMinutes] = useState(0);
   const [sessionStartTimestamp, setSessionStartTimestamp] = useState<number>(Date.now());
+  const [displayName, setDisplayNameState] = useState('Anonymous');
 
   const webrtcManager = useRef<WebRTCManager | null>(null);
   const pauseStartTimeRef = useRef<number | null>(null);
   const totalPausedTimeRef = useRef<number>(0);
   const userId = getUserId();
-  const displayName = getDisplayName() || 'Anonymous';
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -61,9 +61,17 @@ const StudyRoom = () => {
       return;
     }
 
-    initializeRoom();
-    loadUserStreak();
     loadTimerState();
+    
+    const fullInitialization = async () => {
+        const name = await getDisplayUsername(userId);
+        setDisplayNameState(name);
+        
+        await loadUserStreak(name);
+        await initializeRoom(name);
+    };
+    
+    fullInitialization();
 
     return () => {
       saveTimerState();
@@ -78,8 +86,9 @@ const StudyRoom = () => {
     const timer = setInterval(() => {
       if (!isPaused) {
         const now = Date.now();
+        // Calculate elapsed time since session start, minus total accumulated pause time
         const elapsed = Math.floor((now - sessionStartTimestamp - totalPausedTimeRef.current) / 1000);
-        setSessionDuration(elapsed);
+        setSessionDuration(Math.max(0, elapsed));
       }
     }, 1000);
 
@@ -92,7 +101,7 @@ const StudyRoom = () => {
       saveTimerState();
       const sessionMinutes = Math.floor(sessionDuration / 60);
       const totalMinutes = todaysTotalMinutes + sessionMinutes;
-      if (sessionMinutes > 0) {
+      if (totalMinutes > 0) {
         await saveStudySession(userId, roomId!, totalMinutes);
       }
     }, 60000); // Every 60 seconds
@@ -107,18 +116,13 @@ const StudyRoom = () => {
     if (saved) {
       try {
         const state = JSON.parse(saved);
-        setSessionStartTimestamp(state.sessionStartTimestamp);
+        // Only load pause state and paused time from local storage
         setIsPaused(state.isPaused);
         totalPausedTimeRef.current = state.totalPausedTime || 0;
         
         if (state.isPaused && state.pauseStartTime) {
           pauseStartTimeRef.current = state.pauseStartTime;
         }
-        
-        // Calculate current elapsed time
-        const now = Date.now();
-        const elapsed = Math.floor((now - state.sessionStartTimestamp - totalPausedTimeRef.current) / 1000);
-        setSessionDuration(Math.max(0, elapsed));
       } catch (e) {
         console.error('Error loading timer state:', e);
       }
@@ -128,7 +132,6 @@ const StudyRoom = () => {
   const saveTimerState = () => {
     const storageKey = `study_timer_${userId}_${roomId}`;
     const state = {
-      sessionStartTimestamp,
       isPaused,
       totalPausedTime: totalPausedTimeRef.current,
       pauseStartTime: pauseStartTimeRef.current,
@@ -137,14 +140,14 @@ const StudyRoom = () => {
     localStorage.setItem(storageKey, JSON.stringify(state));
   };
 
-  const loadUserStreak = async () => {
-    await ensureUser(userId, displayName);
+  const loadUserStreak = async (currentDisplayName: string) => {
+    await ensureUser(userId, currentDisplayName); // Ensure user exists with correct name
     const stats = await getUserStats(userId);
     if (stats) {
       setCurrentStreak(stats.current_streak);
     }
     
-    // Load today's existing study time and session start
+    // Load today's existing study time and session start from DB
     const { data: user } = await (supabase as any)
       .from('users')
       .select('id')
@@ -160,23 +163,29 @@ const StudyRoom = () => {
         .eq('date', today)
         .maybeSingle();
       
+      const totalPausedTime = totalPausedTimeRef.current; // Use locally loaded pause time
+
       if (todaySession) {
         setTodaysTotalMinutes(todaySession.minutes_studied);
         
-        // Calculate elapsed time from session_start if it exists
         if (todaySession.session_start) {
           const sessionStartTime = new Date(todaySession.session_start).getTime();
+          setSessionStartTimestamp(sessionStartTime); 
+          
           const now = Date.now();
-          const elapsedSeconds = Math.floor((now - sessionStartTime) / 1000);
-          setSessionDuration(elapsedSeconds);
+          // Calculate elapsed time since DB session start, minus accumulated pause time
+          const elapsedSeconds = Math.floor((now - sessionStartTime - totalPausedTime) / 1000);
+          setSessionDuration(Math.max(0, elapsedSeconds));
         } else {
-          // No session_start, this is a new session
+          // Should not happen if session is created correctly, but handle it by setting new start time
+          const newSessionStart = new Date().toISOString();
+          const newSessionStartTimestamp = new Date(newSessionStart).getTime();
+          setSessionStartTimestamp(newSessionStartTimestamp);
           setSessionDuration(0);
           
-          // Update the session with session_start
           await (supabase as any)
             .from('study_sessions')
-            .update({ session_start: new Date().toISOString() })
+            .update({ session_start: newSessionStart })
             .eq('user_id', user.id)
             .eq('date', today);
         }
@@ -185,7 +194,10 @@ const StudyRoom = () => {
         setTodaysTotalMinutes(0);
         setSessionDuration(0);
         
-        // Create new session with session_start
+        const newSessionStart = new Date().toISOString();
+        const newSessionStartTimestamp = new Date(newSessionStart).getTime();
+        setSessionStartTimestamp(newSessionStartTimestamp);
+        
         await (supabase as any)
           .from('study_sessions')
           .insert({
@@ -193,24 +205,21 @@ const StudyRoom = () => {
             room_id: roomId,
             date: today,
             minutes_studied: 0,
-            session_start: new Date().toISOString()
+            session_start: newSessionStart
           });
       }
     }
   };
 
-  const initializeRoom = async () => {
+  const initializeRoom = async (currentDisplayName: string) => {
     try {
       setIsConnecting(true);
-
-      // Ensure user exists in database
-      await ensureUser(userId, displayName);
 
       // Initialize WebRTC
       webrtcManager.current = new WebRTCManager(
         roomId!,
         userId,
-        displayName,
+        currentDisplayName,
         (updatedPeers) => {
           setPeers(updatedPeers);
         }
@@ -249,7 +258,7 @@ const StudyRoom = () => {
     const totalMinutes = todaysTotalMinutes + sessionMinutes;
 
     // Save session if there was any study time in this session
-    if (sessionMinutes > 0) {
+    if (totalMinutes > 0) {
       await saveStudySession(userId, roomId!, totalMinutes);
 
       toast({
@@ -261,8 +270,8 @@ const StudyRoom = () => {
     // Stop all media streams before disconnecting
     if (localStream) {
       localStream.getTracks().forEach(track => {
+        console.log('Stopping track on leave:', track.kind, track.label);
         track.stop();
-        console.log('Stopped track:', track.kind);
       });
     }
 
@@ -286,15 +295,8 @@ const StudyRoom = () => {
     if (webrtcManager.current) {
       const newState = await webrtcManager.current.toggleVideo();
       setVideoEnabled(newState);
-      
-      // Update local stream state
-      if (localStream) {
-        const videoTrack = localStream.getVideoTracks()[0];
-        if (!newState && videoTrack) {
-          videoTrack.stop();
-          console.log('Video track stopped');
-        }
-      }
+      // Crucial: Update localStream state to force VideoGrid re-render and update video element srcObject
+      setLocalStream(webrtcManager.current.getLocalStream());
     }
   };
 
@@ -302,6 +304,8 @@ const StudyRoom = () => {
     if (webrtcManager.current) {
       const sharing = await webrtcManager.current.toggleScreenShare();
       setIsScreenSharing(sharing);
+      // Crucial: Update localStream state to force VideoGrid re-render
+      setLocalStream(webrtcManager.current.getLocalStream());
     }
   };
 

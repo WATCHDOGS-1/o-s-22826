@@ -7,11 +7,29 @@ export interface UserStats {
   last_study_date: string | null;
 }
 
+export const getDisplayUsername = async (userId: string): Promise<string> => {
+  const { data } = await (supabase as any)
+    .from('users')
+    .select('display_name')
+    .eq('user_id', userId)
+    .maybeSingle();
+  
+  return data?.display_name || 'Anonymous';
+};
+
 export const ensureUser = async (userId: string, displayName?: string) => {
-  // Upsert user to avoid duplicate key errors
+  // Upsert user to ensure existence. If displayName is provided (only during initial setup/anonymous), use it.
+  // Otherwise, rely on existing DB data (username set during signup).
+  const upsertData: { user_id: string; display_name?: string; username?: string } = { user_id: userId };
+  
+  if (displayName) {
+    upsertData.display_name = displayName;
+    upsertData.username = displayName;
+  }
+  
   const { error } = await (supabase as any)
     .from('users')
-    .upsert({ user_id: userId, display_name: displayName }, { onConflict: 'user_id' });
+    .upsert(upsertData, { onConflict: 'user_id', ignoreDuplicates: !displayName });
 
   if (error) {
     console.error('Error upserting user:', error);

@@ -15,14 +15,7 @@ export const getUserId = (): string => {
   return userId;
 };
 
-export const getDisplayName = (): string | null => {
-  return localStorage.getItem('onlyfocus_display_name');
-};
-
-export const setDisplayName = (name: string): void => {
-  localStorage.setItem('onlyfocus_display_name', name);
-};
-
+// Removed getDisplayName and setDisplayName functions.
 export const clearUserData = (): void => {
   localStorage.removeItem('onlyfocus_user_id');
   localStorage.removeItem('onlyfocus_display_name');

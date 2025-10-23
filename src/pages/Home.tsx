@@ -1,16 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { BookOpen, Users, Trophy, Clock, LogOut } from 'lucide-react';
-import { setDisplayName } from '@/lib/userStorage';
 import { supabase } from '@/integrations/supabase/client';
 
 const Home = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
-  const [displayNameInput, setDisplayNameInput] = useState('');
+  // Removed displayNameInput state
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -33,9 +31,7 @@ const Home = () => {
   }, [navigate]);
 
   const handleJoinRoom = () => {
-    if (displayNameInput.trim()) {
-      setDisplayName(displayNameInput.trim());
-    }
+    // No need to setDisplayName anymore, it relies on DB username
     navigate('/study/global-room');
   };
 
@@ -68,19 +64,9 @@ const Home = () => {
         {/* Main Card */}
         <Card className="max-w-lg mx-auto p-8 bg-gradient-to-br from-card to-secondary border-border mb-12">
           <div className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                Display Name (optional)
-              </label>
-              <Input
-                type="text"
-                placeholder="Enter your name"
-                value={displayNameInput}
-                onChange={(e) => setDisplayNameInput(e.target.value)}
-                className="w-full"
-              />
-            </div>
-
+            <p className="text-sm text-muted-foreground text-center">
+              You will join the room using your permanent username.
+            </p>
             <Button
               onClick={handleJoinRoom}
               className="w-full bg-primary hover:bg-primary/90 text-white font-semibold h-12"
