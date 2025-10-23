@@ -8,6 +8,7 @@ export interface Peer {
   displayName: string;
   stream?: MediaStream;
   peerConnection?: RTCPeerConnection;
+  videoSender?: RTCRtpSender; // Track the video sender for replacement
 }
 
 export class WebRTCManager {
@@ -36,7 +37,6 @@ export class WebRTCManager {
 
   async init() {
     try {
-      // Start with an empty stream.
       this.localStream = new MediaStream();
       this.wasVideoEnabled = false;
 
@@ -94,10 +94,7 @@ export class WebRTCManager {
 
   private setupVisibilityHandler() {
     this.visibilityChangeHandler = () => {
-      if (!document.hidden) {
-        // If we had video enabled before hiding, we might need to restart tracks
-        // However, modern browsers handle this well. We rely on the browser/WebRTC to maintain connection.
-      }
+      // Keep connections alive in background
     };
     document.addEventListener('visibilitychange', this.visibilityChangeHandler);
   }
@@ -144,31 +141,41 @@ export class WebRTCManager {
       iceCandidatePoolSize: 10,
     });
 
-    // Add existing local tracks
+    const peer: Peer = {
+      id: peerId,
+      displayName: displayName || 'Anonymous',
+      peerConnection: peerConnection,
+    };
+
+    // Add existing local tracks and store the sender
     if (this.localStream) {
       this.localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, this.localStream!);
+        if (track.kind === 'video') {
+          peer.videoSender = peerConnection.addTrack(track, this.localStream!);
+        } else {
+          peerConnection.addTrack(track, this.localStream!);
+        }
       });
     }
 
     // Handle incoming tracks
     peerConnection.ontrack = (event) => {
-      const peer = this.peers.get(peerId);
-      if (peer) {
+      const currentPeer = this.peers.get(peerId);
+      if (currentPeer) {
         // Mute remote audio tracks
         if (event.track.kind === 'audio') {
           event.track.enabled = false;
         }
         
         // Ensure stream is correctly associated
-        let remoteStream = event.streams.length > 0 ? event.streams[0] : peer.stream;
+        let remoteStream = event.streams.length > 0 ? event.streams[0] : currentPeer.stream;
         if (!remoteStream) {
           remoteStream = new MediaStream([event.track]);
         } else if (!remoteStream.getTrackById(event.track.id)) {
           remoteStream.addTrack(event.track);
         }
         
-        peer.stream = remoteStream;
+        currentPeer.stream = remoteStream;
         this.notifyPeersUpdate();
       }
     };
@@ -190,11 +197,7 @@ export class WebRTCManager {
     };
     
     // Update peer map
-    this.peers.set(peerId, {
-      id: peerId,
-      displayName: displayName || 'Anonymous',
-      peerConnection: peerConnection,
-    });
+    this.peers.set(peerId, peer);
     this.iceCandidateBuffers.set(peerId, []);
   }
 
@@ -333,11 +336,10 @@ export class WebRTCManager {
       existingVideoTrack.stop();
       this.localStream.removeTrack(existingVideoTrack);
       
-      // Update peer connections to remove video track
+      // Update peer connections to remove video track (replace with null)
       this.peers.forEach(peer => {
-        const sender = peer.peerConnection?.getSenders().find(s => s.track === existingVideoTrack);
-        if (sender) {
-          sender.replaceTrack(null);
+        if (peer.videoSender) {
+          peer.videoSender.replaceTrack(null);
         }
       });
       
@@ -355,18 +357,16 @@ export class WebRTCManager {
         const newVideoTrack = newStream.getVideoTracks()[0];
         this.localStream.addTrack(newVideoTrack);
         
-        // Update peer connections - add or replace track
+        // Update peer connections - replace track or add new sender
         this.peers.forEach(peer => {
           if (!peer.peerConnection) return;
           
-          const videoSender = peer.peerConnection.getSenders().find(s => s.track?.kind === 'video');
-          
-          if (videoSender) {
+          if (peer.videoSender) {
             // Replace existing (possibly null) video track
-            videoSender.replaceTrack(newVideoTrack);
+            peer.videoSender.replaceTrack(newVideoTrack);
           } else {
-            // Add new video track
-            peer.peerConnection.addTrack(newVideoTrack, this.localStream!);
+            // Add new video track and store the sender
+            peer.videoSender = peer.peerConnection.addTrack(newVideoTrack, this.localStream!);
           }
         });
         
