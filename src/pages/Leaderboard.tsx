@@ -33,13 +33,9 @@ const Leaderboard = () => {
 
   const loadLeaderboard = async () => {
     setLoading(true);
+    // getWeeklyLeaderboard now returns the necessary user details
     const data = await getWeeklyLeaderboard();
-    // The RPC function needs to be updated to return username
-    const formattedData = data.map((d: any) => ({
-      ...d,
-      username: d.username || d.user_id, // fallback
-    }));
-    setLeaderboard(formattedData as LeaderboardEntry[]);
+    setLeaderboard(data as LeaderboardEntry[]);
     setLoading(false);
   };
 
@@ -50,9 +46,9 @@ const Leaderboard = () => {
   };
 
   const getMedalIcon = (index: number) => {
-    if (index === 0) return <Medal className="h-6 w-6 text-yellow-500" />;
-    if (index === 1) return <Medal className="h-6 w-6 text-gray-400" />;
-    if (index === 2) return <Medal className="h-6 w-6 text-amber-600" />;
+    if (index === 0) return <Medal className="h-6 w-6 text-yellow-500 fill-yellow-500" />;
+    if (index === 1) return <Medal className="h-6 w-6 text-gray-400 fill-gray-400" />;
+    if (index === 2) return <Medal className="h-6 w-6 text-amber-600 fill-amber-600" />;
     return null;
   };
 
@@ -103,6 +99,9 @@ const Leaderboard = () => {
                   </div>
                 </div>
               ))}
+              {leaderboard.length === 0 && (
+                <div className="p-6 text-center text-muted-foreground">No study data recorded this week yet.</div>
+              )}
             </div>
           )}
         </Card>

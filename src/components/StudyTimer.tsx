@@ -53,7 +53,7 @@ const StudyTimer = ({ isActive, currentStreak, sessionDuration, todaysTotalMinut
             </Button>
           )}
           <div className="flex items-center gap-2 bg-primary/20 px-3 py-1 rounded-full">
-            <Flame className="h-4 w-4 text-primary" />
+            <Flame className="h-4 w-4 text-primary fill-primary" />
             <span className="text-sm font-bold text-primary">{currentStreak} day streak</span>
           </div>
         </div>

@@ -95,8 +95,27 @@ export const updateStreak = async (userDbId: string) => {
   }
   
   if (!stats) {
-    console.log('No stats found for user:', userDbId);
-    return;
+    // If stats don't exist, they should have been created during onboarding.
+    // If this happens, it means the user is old or the onboarding failed.
+    // We should ensure a stats entry exists before proceeding.
+    const { error: insertError } = await (supabase as any)
+      .from('user_stats')
+      .insert({ user_id: userDbId });
+    if (insertError) {
+      console.error('Error creating missing user_stats:', insertError);
+      return;
+    }
+    // Re-fetch stats after insertion
+    const { data: newStats } = await (supabase as any)
+      .from('user_stats')
+      .select('*')
+      .eq('user_id', userDbId)
+      .maybeSingle();
+    if (!newStats) return;
+    stats.current_streak = newStats.current_streak;
+    stats.longest_streak = newStats.longest_streak;
+    stats.last_study_date = newStats.last_study_date;
+    stats.total_minutes = newStats.total_minutes;
   }
 
   const { data: settings } = await (supabase as any)
@@ -179,10 +198,33 @@ export const getUserStats = async (userId: string): Promise<UserStats | null> =>
 };
 
 export const getWeeklyLeaderboard = async () => {
-  const { data, error } = await supabase.rpc('get_weekly_leaderboard');
+  const { data: leaderboardData, error } = await supabase.rpc('get_weekly_leaderboard');
   if (error) {
     console.error("Error fetching weekly leaderboard", error);
     return [];
   }
-  return data;
+  
+  // Fetch user details for each entry
+  const userIds = leaderboardData.map((d: any) => d.user_id);
+  
+  const { data: usersData, error: usersError } = await supabase
+    .from('users')
+    .select('id, username, display_name')
+    .in('id', userIds);
+
+  if (usersError) {
+    console.error("Error fetching user details for leaderboard", usersError);
+    return leaderboardData; // Return raw data if user fetch fails
+  }
+
+  const userMap = new Map(usersData.map(u => [u.id, u]));
+
+  return leaderboardData.map((entry: any) => {
+    const user = userMap.get(entry.user_id);
+    return {
+      ...entry,
+      username: user?.username || 'Unknown',
+      display_name: user?.display_name || 'Unknown User',
+    };
+  });
 };
