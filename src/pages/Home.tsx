@@ -4,34 +4,27 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { BookOpen, Users, Trophy, Clock, LogOut } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext'; // Import useAuth
 
 const Home = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<any>(null);
-  // Removed displayNameInput state
+  const { user, profile, loading: authLoading } = useAuth(); // Use useAuth hook
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
+    if (!authLoading) {
+      if (!user) {
         navigate('/signin');
+      } else if (!profile?.username) {
+        // If user is logged in but profile or username is missing (common for OAuth users)
+        navigate('/setup-username');
       } else {
-        setUser(session.user);
+        setLoading(false);
       }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session) {
-        navigate('/signin');
-      } else {
-        setUser(session.user);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+    }
+  }, [user, profile, authLoading, navigate]);
 
   const handleJoinRoom = () => {
-    // No need to setDisplayName anymore, it relies on DB username
     navigate('/study/global-room');
   };
 
@@ -39,6 +32,10 @@ const Home = () => {
     await supabase.auth.signOut();
     navigate('/');
   };
+
+  if (authLoading || loading) {
+    return <div className="min-h-screen bg-background flex items-center justify-center text-primary">Loading...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -65,7 +62,7 @@ const Home = () => {
         <Card className="max-w-lg mx-auto p-8 bg-gradient-to-br from-card to-secondary border-border mb-12">
           <div className="space-y-6">
             <p className="text-sm text-muted-foreground text-center">
-              You will join the room using your permanent username.
+              You will join the room using your permanent username: <span className="font-bold text-foreground">@{profile?.username}</span>
             </p>
             <Button
               onClick={handleJoinRoom}

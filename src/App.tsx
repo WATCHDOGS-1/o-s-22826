@@ -13,6 +13,7 @@ import PublicProfile from "./pages/PublicProfile";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import ResetPassword from "./pages/ResetPassword";
+import UsernameSetup from "./pages/UsernameSetup"; // Import new component
 import NotFound from "./pages/NotFound";
 import Footer from "./components/Footer";
 
@@ -37,6 +38,7 @@ const App = () => (
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/profile/:username" element={<PublicProfile />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/setup-username" element={<UsernameSetup />} /> {/* New route */}
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
