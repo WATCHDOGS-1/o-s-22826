@@ -21,7 +21,7 @@ const StudyRoom = () => {
   const [user, setUser] = useState<any>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [peers, setPeers] = useState<Peer[]>([]);
-  const [videoEnabled, setVideoEnabled] = useState(false); // Camera is off by default
+  const [videoEnabled, setVideoEnabled] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(true);
   const [currentStreak, setCurrentStreak] = useState(0);
@@ -175,8 +175,9 @@ const StudyRoom = () => {
       const stream = await webrtcManager.current.init();
       setLocalStream(stream);
 
-      // Video is off by default
-      setVideoEnabled(false); 
+      // Check if video track exists
+      const hasVideo = stream.getVideoTracks().length > 0;
+      setVideoEnabled(hasVideo);
 
       toast({
         title: 'Connected',
@@ -233,8 +234,6 @@ const StudyRoom = () => {
     if (webrtcManager.current) {
       const sharing = await webrtcManager.current.toggleScreenShare();
       setIsScreenSharing(sharing);
-      // If we start sharing, video is technically enabled (showing screen)
-      setVideoEnabled(sharing); 
     }
   };
 
