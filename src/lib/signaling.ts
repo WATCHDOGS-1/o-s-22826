@@ -1,4 +1,4 @@
-export const SIGNALING_SERVER_URL = "ws://localhost:8081/signal"; // Placeholder URL
+export const SIGNALING_SERVER_URL = "wss://YOUR_SIGNALING_SERVER_DOMAIN/signal"; // Placeholder URL - MUST BE REPLACED
 
 export interface SignalingMessage {
   type: 'matchmaking' | 'offer' | 'answer' | 'ice-candidate' | 'room-found' | 'error';

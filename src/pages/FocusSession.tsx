@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Video, VideoOff, Users, Loader2, XCircle } from 'lucide-react';
 import { WebRTCManager, Peer } from '@/lib/webrtcP2P';
-import { SignalingClient, SignalingMessage } from '@/lib/signaling';
+import { SignalingClient, SignalingMessage, SIGNALING_SERVER_URL } from '@/lib/signaling';
 import { updateStatsAfterSession } from '@/lib/localStore';
 import VideoGridP2P from '@/components/VideoGridP2P';
 import FocusTimer, { FocusTimerRef } from '@/components/FocusTimer';
@@ -153,7 +153,7 @@ const FocusSession = ({ matchSize, onEndSession }: FocusSessionProps) => {
           Cancel Search
         </Button>
         <p className="text-xs text-red-500 mt-4 text-center">
-          Note: If stuck on 'Connecting', ensure the signaling server is running at {signalingClientRef.current?.ws?.url || 'ws://localhost:8081/signal'}
+          Note: If stuck on 'Connecting', ensure the signaling server is running at {SIGNALING_SERVER_URL}
         </p>
       </div>
     );
@@ -165,7 +165,7 @@ const FocusSession = ({ matchSize, onEndSession }: FocusSessionProps) => {
         <XCircle className="h-12 w-12 text-destructive mb-4" />
         <h1 className="text-2xl font-bold text-foreground mb-2">Connection Failed</h1>
         <p className="text-muted-foreground text-center mb-4">
-          Could not establish connection. Please check the console for details or ensure the signaling server is running.
+          Could not establish connection. Please check the console for details or ensure the signaling server is running at {SIGNALING_SERVER_URL}.
         </p>
         <Button onClick={setupConnection} className="mr-2">
           Try Again
