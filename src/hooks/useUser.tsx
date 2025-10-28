@@ -29,9 +29,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data, error } = await supabase.auth.signInAnonymously();
 
       if (error) {
-        console.error("Anonymous sign-in failed:", error);
+        console.error("Anonymous sign-in failed:", error.message); // Log specific error message
         toast.error("Authentication Failed", {
-          description: "Could not sign in anonymously. Please try refreshing.",
+          description: "Could not sign in anonymously. Please try refreshing. Check console for details.",
         });
         setIsLoading(false);
       } else if (data.user) {
