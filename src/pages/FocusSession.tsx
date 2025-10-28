@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Video, VideoOff, Users, Loader2, XCircle } from 'lucide-react';
 import { WebRTCManager, Peer } from '@/lib/webrtcP2P';
 import { SignalingClient, SignalingMessage, SIGNALING_SERVER_URL } from '@/lib/signaling';
-import { updateStatsAfterSession } from '@/lib/localStore';
+import { updateStatsAfterSession } from '@/lib/userStats';
 import VideoGridP2P from '@/components/VideoGridP2P';
 import FocusTimer, { FocusTimerRef } from '@/components/FocusTimer';
 import LocalStats from '@/components/LocalStats';
@@ -12,14 +12,10 @@ import { toast } from 'sonner';
 interface FocusSessionProps {
   matchSize: number;
   onEndSession: () => void;
+  userId: string; // Now required as a prop
 }
 
-const generateUserId = (): string => {
-  return `user_${Math.random().toString(36).substring(2, 10)}`;
-};
-
-const FocusSession = ({ matchSize, onEndSession }: FocusSessionProps) => {
-  const userId = useRef(generateUserId()).current;
+const FocusSession = ({ matchSize, onEndSession, userId }: FocusSessionProps) => {
   const [status, setStatus] = useState<'connecting' | 'waiting' | 'active' | 'error'>('connecting');
   const [peers, setPeers] = useState<Peer[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -127,8 +123,8 @@ const FocusSession = ({ matchSize, onEndSession }: FocusSessionProps) => {
     setVideoEnabled(enabled ?? false);
   };
   
-  const handleSessionComplete = (minutes: number) => {
-    updateStatsAfterSession(minutes);
+  const handleSessionComplete = async (minutes: number) => {
+    await updateStatsAfterSession(userId, minutes);
     setStatsRefreshKey(prev => prev + 1);
   };
 
@@ -217,7 +213,7 @@ const FocusSession = ({ matchSize, onEndSession }: FocusSessionProps) => {
             onSessionComplete={handleSessionComplete}
             ref={timerRef}
           />
-          <LocalStats refreshKey={statsRefreshKey} />
+          <LocalStats refreshKey={statsRefreshKey} userId={userId} />
         </div>
       </div>
     </div>

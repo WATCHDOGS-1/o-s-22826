@@ -1,18 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Users, Zap, Flame, Clock } from 'lucide-react';
+import { Users, Zap, Flame, Clock, Loader2 } from 'lucide-react';
 import FocusSession from './FocusSession';
-import { getStats, setMatchSize } from '@/lib/localStore';
+import { getStats, setMatchSize, UserStats } from '@/lib/userStats';
 import LocalStats from '@/components/LocalStats';
+import { useUser } from '@/hooks/useUser';
 
 const Index = () => {
+  const { userId, isLoading: isAuthLoading } = useUser();
   const [inSession, setInSession] = useState(false);
-  const [matchSize, setMatchSizeState] = useState(getStats().matchSize);
+  const [matchSize, setMatchSizeState] = useState(4);
   const [statsRefreshKey, setStatsRefreshKey] = useState(0);
+  const [isStatsLoading, setIsStatsLoading] = useState(true);
 
-  const handleStartSession = () => {
-    setMatchSize(matchSize);
+  const loadInitialStats = useCallback(async (id: string) => {
+    setIsStatsLoading(true);
+    const stats: UserStats = await getStats(id);
+    setMatchSizeState(stats.matchSize);
+    setIsStatsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (userId) {
+      loadInitialStats(userId);
+    }
+  }, [userId, loadInitialStats]);
+
+  const handleStartSession = async () => {
+    if (!userId) return;
+    await setMatchSize(userId, matchSize);
     setInSession(true);
   };
   
@@ -21,8 +38,22 @@ const Index = () => {
     setStatsRefreshKey(prev => prev + 1); // Refresh stats on return
   };
 
+  if (isAuthLoading || isStatsLoading || !userId) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen p-4">
+        <Loader2 className="h-12 w-12 text-primary animate-spin mb-4" />
+        <h1 className="text-2xl font-bold text-foreground mb-2">
+          Loading User Profile...
+        </h1>
+        <p className="text-muted-foreground">
+          Signing you in anonymously to save your progress.
+        </p>
+      </div>
+    );
+  }
+
   if (inSession) {
-    return <FocusSession matchSize={matchSize} onEndSession={handleEndSession} />;
+    return <FocusSession matchSize={matchSize} onEndSession={handleEndSession} userId={userId} />;
   }
 
   return (
@@ -72,7 +103,7 @@ const Index = () => {
 
         {/* Stats and Features */}
         <div className="grid md:grid-cols-2 gap-6">
-          <LocalStats refreshKey={statsRefreshKey} />
+          <LocalStats refreshKey={statsRefreshKey} userId={userId} />
           
           <Card className="p-6 bg-card border-border shadow-card">
             <h3 className="font-semibold text-foreground mb-4">Core Features</h3>
@@ -87,7 +118,7 @@ const Index = () => {
               </li>
               <li className="flex items-center gap-3">
                 <Zap className="h-5 w-5 text-primary" />
-                <span>Local XP and Streak tracking (no accounts needed).</span>
+                <span>Persistent XP and Streak tracking (via Supabase).</span>
               </li>
               <li className="flex items-center gap-3">
                 <Flame className="h-5 w-5 text-accent" />
