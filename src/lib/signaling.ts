@@ -1,4 +1,4 @@
-export const SIGNALING_SERVER_URL = "wss://YOUR_SIGNALING_SERVER_DOMAIN/signal"; // Placeholder URL - MUST BE REPLACED
+export const SIGNALING_SERVER_URL = "wss://REPLACE_ME_WITH_YOUR_ACTUAL_SIGNALING_SERVER_URL/signal"; // IMPORTANT: Replace this placeholder with your deployed WebSocket server URL
 
 export interface SignalingMessage {
   type: 'matchmaking' | 'offer' | 'answer' | 'ice-candidate' | 'room-found' | 'error';
