@@ -1,4 +1,4 @@
-export const SIGNALING_SERVER_URL = "wss://REPLACE_ME_WITH_YOUR_ACTUAL_SIGNALING_SERVER_URL/signal"; // IMPORTANT: Replace this placeholder with your deployed WebSocket server URL
+export const SIGNALING_SERVER_BASE_URL = "wss://REPLACE_ME_WITH_YOUR_ACTUAL_SIGNALING_SERVER_URL"; // IMPORTANT: Replace this placeholder with your deployed WebSocket server base URL (e.g., wss://my-deno-server.deno.dev)
 
 export interface SignalingMessage {
   type: 'matchmaking' | 'offer' | 'answer' | 'ice-candidate' | 'room-found' | 'error';
@@ -31,7 +31,10 @@ export class SignalingClient {
       this.ws.close();
     }
     
-    this.ws = new WebSocket(SIGNALING_SERVER_URL);
+    // Construct the full WebSocket URL including the userId for identification
+    const url = `${SIGNALING_SERVER_BASE_URL}/signal?userId=${this.userId}`;
+    
+    this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {
       console.log("Signaling connected. Requesting match.");
@@ -61,7 +64,7 @@ export class SignalingClient {
 
     this.ws.onerror = (error) => {
       console.error("Signaling error:", error);
-      this.onMessage({ type: 'error', error: 'Signaling connection failed. Ensure the server is running at ' + SIGNALING_SERVER_URL });
+      this.onMessage({ type: 'error', error: 'Signaling connection failed. Ensure the server is running at ' + url });
     };
   }
 
