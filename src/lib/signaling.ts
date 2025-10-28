@@ -1,5 +1,7 @@
 export const SIGNALING_SERVER_BASE_URL = "wss://REPLACE_ME_WITH_YOUR_ACTUAL_SIGNALING_SERVER_URL"; // IMPORTANT: Replace this placeholder with your deployed WebSocket server base URL (e.g., wss://my-deno-server.deno.dev)
 
+export const IS_SIGNALING_CONFIGURED = SIGNALING_SERVER_BASE_URL !== "wss://REPLACE_ME_WITH_YOUR_ACTUAL_SIGNALING_SERVER_URL";
+
 export interface SignalingMessage {
   type: 'matchmaking' | 'offer' | 'answer' | 'ice-candidate' | 'room-found' | 'error';
   from?: string;
@@ -27,6 +29,12 @@ export class SignalingClient {
   }
 
   connect(matchSize: number) {
+    if (!IS_SIGNALING_CONFIGURED && matchSize > 1) {
+        console.error("Signaling server URL is a placeholder. Cannot connect to peers.");
+        this.onMessage({ type: 'error', error: 'Signaling server URL is not configured. Please update src/lib/signaling.ts or select Solo Mode (Match Size 1).' });
+        return;
+    }
+    
     if (this.ws) {
       this.ws.close();
     }

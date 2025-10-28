@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Users, Zap, Flame, Clock, Loader2 } from 'lucide-react';
+import { Users, Zap, Flame, Clock, Loader2, AlertTriangle } from 'lucide-react';
 import FocusSession from './FocusSession';
 import { getStats, setMatchSize, UserStats } from '@/lib/userStats';
 import LocalStats from '@/components/LocalStats';
 import { useUser } from '@/hooks/useUser';
+import { IS_SIGNALING_CONFIGURED } from '@/lib/signaling';
 
 const Index = () => {
   const { userId, isLoading: isAuthLoading } = useUser();
@@ -17,7 +18,11 @@ const Index = () => {
   const loadInitialStats = useCallback(async (id: string) => {
     setIsStatsLoading(true);
     const stats: UserStats = await getStats(id);
-    setMatchSizeState(stats.matchSize);
+    
+    // Default to match size 1 if signaling is not configured, otherwise use saved size
+    const initialMatchSize = IS_SIGNALING_CONFIGURED ? stats.matchSize : 1;
+    
+    setMatchSizeState(initialMatchSize);
     setIsStatsLoading(false);
   }, []);
 
@@ -29,6 +34,13 @@ const Index = () => {
 
   const handleStartSession = async () => {
     if (!userId) return;
+    
+    if (!IS_SIGNALING_CONFIGURED && matchSize > 1) {
+        // Prevent starting multi-peer session if signaling is not configured
+        setMatchSizeState(1);
+        return;
+    }
+    
     await setMatchSize(userId, matchSize);
     setInSession(true);
   };
@@ -68,6 +80,21 @@ const Index = () => {
             Random minds. Shared silence. Pure focus.
           </p>
         </header>
+        
+        {/* Signaling Warning */}
+        {!IS_SIGNALING_CONFIGURED && (
+            <Card className="p-4 bg-destructive/20 border-destructive text-destructive-foreground mb-6 flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 mt-1 flex-shrink-0" />
+                <div>
+                    <h3 className="font-semibold">Signaling Server Not Configured</h3>
+                    <p className="text-sm">
+                        Multi-peer sessions (Match Size 2 or 4) require an external signaling server. 
+                        Please update the URL in `src/lib/signaling.ts` to enable P2P matching. 
+                        Currently defaulting to Solo Mode (Match Size 1).
+                    </p>
+                </div>
+            </Card>
+        )}
 
         {/* Main Action Card */}
         <Card className="p-8 bg-gradient-to-br from-card to-secondary border-border shadow-glow/30 mb-12">
@@ -86,6 +113,7 @@ const Index = () => {
                   variant={matchSize === size ? "default" : "outline"}
                   onClick={() => setMatchSizeState(size)}
                   className="flex-1 h-12 text-lg"
+                  disabled={!IS_SIGNALING_CONFIGURED && size > 1}
                 >
                   {size} {size === 1 ? 'Solo' : 'Peers'}
                 </Button>
