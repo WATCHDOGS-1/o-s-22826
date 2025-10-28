@@ -89,26 +89,26 @@ const Home = () => {
         <div className="grid md:grid-cols-4 gap-6 max-w-6xl mx-auto">
           <Card className="p-6 bg-card border-border text-center">
             <Users className="h-10 w-10 text-primary mx-auto mb-3" />
-            <h3 className="font-semibold text-foreground mb-2">Live Webcam Rooms</h3>
-            <p className="text-sm text-muted-foreground">Study together in real-time with live video cameras for accountability and motivation in virtual coworking spaces</p>
+            <h3 className="font-semibold text-foreground mb-2">Video Rooms</h3>
+            <p className="text-sm text-muted-foreground">Study with up to 10 friends</p>
           </Card>
 
           <Card className="p-6 bg-card border-border text-center">
             <Clock className="h-10 w-10 text-accent mx-auto mb-3" />
-            <h3 className="font-semibold text-foreground mb-2">Pomodoro Timer</h3>
-            <p className="text-sm text-muted-foreground">Track every study session with built-in focus timer. Your progress persists even when you refresh the page</p>
+            <h3 className="font-semibold text-foreground mb-2">Track Time</h3>
+            <p className="text-sm text-muted-foreground">Monitor your study sessions</p>
           </Card>
 
           <Card className="p-6 bg-card border-border text-center">
             <BookOpen className="h-10 w-10 text-primary mx-auto mb-3" />
-            <h3 className="font-semibold text-foreground mb-2">Daily Study Streaks</h3>
-            <p className="text-sm text-muted-foreground">Build consistency by studying 25+ minutes daily. Track your longest streak and stay motivated with habit building</p>
+            <h3 className="font-semibold text-foreground mb-2">Build Streaks</h3>
+            <p className="text-sm text-muted-foreground">Study 25min+ daily</p>
           </Card>
 
           <Card className="p-6 bg-card border-border text-center">
             <Trophy className="h-10 w-10 text-accent mx-auto mb-3" />
-            <h3 className="font-semibold text-foreground mb-2">Global Leaderboard</h3>
-            <p className="text-sm text-muted-foreground">Compete with students worldwide. See top performers by total study time and current streak length</p>
+            <h3 className="font-semibold text-foreground mb-2">Leaderboard</h3>
+            <p className="text-sm text-muted-foreground">Compete with others</p>
           </Card>
         </div>
 

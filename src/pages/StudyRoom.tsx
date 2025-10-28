@@ -28,7 +28,7 @@ const StudyRoom = () => {
   const [sessionStartTime] = useState(Date.now());
   const [sessionDuration, setSessionDuration] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const [todaysTotalMinutes, setTodaysTotalMinutes] = useState(0);
+  const [todaysInitialMinutes, setTodaysInitialMinutes] = useState(0);
 
   const webrtcManager = useRef<WebRTCManager | null>(null);
   const userId = getUserId();
@@ -83,15 +83,14 @@ const StudyRoom = () => {
   // Separate effect for auto-save
   useEffect(() => {
     const saveInterval = setInterval(async () => {
-      const sessionMinutes = Math.floor(sessionDuration / 60);
-      const totalMinutes = todaysTotalMinutes + sessionMinutes;
-      if (sessionMinutes > 0) {
+      const totalMinutes = Math.floor(sessionDuration / 60);
+      if (totalMinutes > todaysInitialMinutes) {
         await saveStudySession(userId, roomId!, totalMinutes);
       }
     }, 60000); // Every 60 seconds
 
     return () => clearInterval(saveInterval);
-  }, [sessionDuration, todaysTotalMinutes, userId, roomId]);
+  }, [sessionDuration, todaysInitialMinutes, userId, roomId]);
 
   const loadUserStreak = async () => {
     await ensureUser(userId, displayName);
@@ -100,7 +99,7 @@ const StudyRoom = () => {
       setCurrentStreak(stats.current_streak);
     }
     
-    // Load today's existing study time and session start
+    // Load today's existing study time
     const { data: user } = await (supabase as any)
       .from('users')
       .select('id')
@@ -111,46 +110,15 @@ const StudyRoom = () => {
       const today = new Date().toISOString().split('T')[0];
       const { data: todaySession } = await (supabase as any)
         .from('study_sessions')
-        .select('minutes_studied, session_start')
+        .select('minutes_studied')
         .eq('user_id', user.id)
         .eq('date', today)
         .maybeSingle();
       
       if (todaySession) {
-        setTodaysTotalMinutes(todaySession.minutes_studied);
-        
-        // Calculate elapsed time from session_start if it exists
-        if (todaySession.session_start) {
-          const sessionStartTime = new Date(todaySession.session_start).getTime();
-          const now = Date.now();
-          const elapsedSeconds = Math.floor((now - sessionStartTime) / 1000);
-          setSessionDuration(elapsedSeconds);
-        } else {
-          // No session_start, this is a new session
-          setSessionDuration(0);
-          
-          // Update the session with session_start
-          await (supabase as any)
-            .from('study_sessions')
-            .update({ session_start: new Date().toISOString() })
-            .eq('user_id', user.id)
-            .eq('date', today);
-        }
-      } else {
-        // No session today, start fresh
-        setTodaysTotalMinutes(0);
-        setSessionDuration(0);
-        
-        // Create new session with session_start
-        await (supabase as any)
-          .from('study_sessions')
-          .insert({
-            user_id: user.id,
-            room_id: roomId,
-            date: today,
-            minutes_studied: 0,
-            session_start: new Date().toISOString()
-          });
+        const initialSeconds = todaySession.minutes_studied * 60;
+        setTodaysInitialMinutes(todaySession.minutes_studied);
+        setSessionDuration(initialSeconds);
       }
     }
   };
@@ -197,12 +165,11 @@ const StudyRoom = () => {
   };
 
   const handleLeaveRoom = async () => {
-    // Calculate total study time for today
-    const sessionMinutes = Math.floor(sessionDuration / 60);
-    const totalMinutes = todaysTotalMinutes + sessionMinutes;
+    // Calculate total session duration
+    const totalMinutes = Math.floor(sessionDuration / 60);
 
-    // Save session if there was any study time in this session
-    if (sessionMinutes > 0) {
+    // Save session if more than initial
+    if (totalMinutes > todaysInitialMinutes) {
       await saveStudySession(userId, roomId!, totalMinutes);
 
       toast({
@@ -315,7 +282,6 @@ const StudyRoom = () => {
             isActive={!isPaused} 
             currentStreak={currentStreak} 
             sessionDuration={sessionDuration}
-            todaysTotalMinutes={todaysTotalMinutes}
             onPauseToggle={() => setIsPaused(!isPaused)}
             isPaused={isPaused}
           />

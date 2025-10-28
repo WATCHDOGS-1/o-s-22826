@@ -11,6 +11,7 @@ export interface Peer {
 }
 
 export class WebRTCManager {
+  private socket: WebSocket | null = null; // legacy, unused
   private channel: RealtimeChannel | null = null;
   private localStream: MediaStream | null = null;
   private peers: Map<string, Peer> = new Map();
@@ -19,7 +20,7 @@ export class WebRTCManager {
   private userId: string = '';
   private displayName: string = '';
   private onPeersUpdate?: (peers: Peer[]) => void;
-  private wasVideoEnabledBeforeScreenShare: boolean = false;
+  private wasVideoEnabledBeforeScreenShare: boolean = true;
   private wasVideoEnabled: boolean = false;
   private wasScreenSharing: boolean = false;
   private visibilityChangeHandler: (() => void) | null = null;
@@ -38,14 +39,50 @@ export class WebRTCManager {
 
   async init() {
     try {
-      // Start with an empty stream. Media permissions are requested only when video is toggled ON.
-      this.localStream = new MediaStream();
-      this.wasVideoEnabled = false;
+      // Get video and audio stream with Brave-compatible settings
+      try {
+        this.localStream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+            facingMode: 'user',
+            frameRate: { ideal: 30, max: 60 }
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+        console.log('Local media stream obtained with', 
+          this.localStream.getVideoTracks().length, 'video tracks and',
+          this.localStream.getAudioTracks().length, 'audio tracks');
+      } catch (mediaError) {
+        console.error('Could not access camera/microphone:', mediaError);
+        // Try video only as fallback
+        try {
+          this.localStream = await navigator.mediaDevices.getUserMedia({
+            video: { 
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: false
+          });
+          console.log('Fallback: Video-only stream obtained');
+        } catch (fallbackError) {
+          console.error('Could not access camera:', fallbackError);
+          // Create an empty MediaStream so the rest of the code works
+          this.localStream = new MediaStream();
+        }
+      }
 
-      // Setup track ended handlers (will be empty initially)
+      // Track initial state
+      this.wasVideoEnabled = this.localStream.getVideoTracks().length > 0;
+
+      // Setup track ended handlers
       this.setupTrackEndedHandlers();
 
-      // Setup page visibility handler
+      // Setup page visibility handler to restart streams
       this.setupVisibilityHandler();
 
       // Setup Supabase Realtime channel for signaling
@@ -108,21 +145,183 @@ export class WebRTCManager {
   }
 
   private setupTrackEndedHandlers() {
-    // Tracks are added dynamically in toggleVideo/ScreenShare, so we don't need to check here initially.
+    if (!this.localStream) return;
+
+    this.localStream.getTracks().forEach(track => {
+      track.onended = () => {
+        console.warn(`Track ended unexpectedly: ${track.kind} - ${track.label}`);
+        // Track ended, likely due to browser suspending it
+        // We'll handle restart in visibility change handler
+      };
+    });
   }
 
   private setupVisibilityHandler() {
     this.visibilityChangeHandler = async () => {
-      if (!document.hidden) {
-        console.log('Tab returned to foreground - connection maintained');
+      if (document.hidden) {
+        console.log('Tab went to background - maintaining connection');
+        // Store current state but don't disconnect
+        const videoTrack = this.localStream?.getVideoTracks()[0];
+        if (videoTrack) {
+          this.wasScreenSharing = !!(videoTrack as any).getSettings?.().displaySurface;
+          this.wasVideoEnabled = videoTrack.readyState === 'live';
+        }
+      } else {
+        console.log('Tab came to foreground - checking connection');
+        
+        // Small delay to allow network to stabilize
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Check if we need to reconnect
+        const needsReconnect = Array.from(this.peers.values()).some(
+          peer => peer.peerConnection?.connectionState === 'disconnected' || 
+                  peer.peerConnection?.connectionState === 'failed' ||
+                  peer.peerConnection?.connectionState === 'closed'
+        );
+        
+        if (needsReconnect) {
+          console.log('Reconnecting peers...');
+          // Attempt to restart ICE for failed connections
+          this.peers.forEach((peer) => {
+            const state = peer.peerConnection?.connectionState;
+            if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+              console.log(`Restarting ICE for peer ${peer.id} (state: ${state})`);
+              try {
+                if (state === 'closed') {
+                  console.warn('Connection closed, may need manual rejoin');
+                } else {
+                  peer.peerConnection?.restartIce();
+                }
+              } catch (error) {
+                console.error(`Error reconnecting to peer ${peer.id}:`, error);
+              }
+            }
+          });
+        }
+        
+        // Attempt to restart tracks if they were stopped
+        await this.restartTracksIfNeeded();
       }
     };
 
     document.addEventListener('visibilitychange', this.visibilityChangeHandler);
   }
 
+  private async restartTracksIfNeeded() {
+    if (!this.localStream) return;
+
+    const videoTrack = this.localStream.getVideoTracks()[0];
+    const audioTrack = this.localStream.getAudioTracks()[0];
+
+    // Check if video track ended
+    if (videoTrack && videoTrack.readyState === 'ended' && this.wasVideoEnabled) {
+      console.log('Restarting video track after tab became visible');
+      try {
+        if (this.wasScreenSharing) {
+          // Don't auto-restart screen share, user needs to click the button again
+          console.log('Screen share was active but ended - user needs to restart manually');
+          this.localStream.removeTrack(videoTrack);
+          
+          // Notify peers to remove video
+          this.peers.forEach(peer => {
+            const sender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
+            if (sender) {
+              sender.replaceTrack(null);
+            }
+          });
+        } else {
+          // Restart camera
+          const newStream = await navigator.mediaDevices.getUserMedia({
+            video: { 
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              facingMode: 'user'
+            }
+          });
+          
+          const newVideoTrack = newStream.getVideoTracks()[0];
+          this.localStream.removeTrack(videoTrack);
+          this.localStream.addTrack(newVideoTrack);
+          
+          // Setup ended handler for new track
+          newVideoTrack.onended = () => {
+            console.warn('Video track ended unexpectedly');
+          };
+          
+          // Update peer connections
+          this.peers.forEach(peer => {
+            const sender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
+            if (sender) {
+              sender.replaceTrack(newVideoTrack).catch(e => {
+                console.error('Error replacing video track:', e);
+              });
+            }
+          });
+          
+          console.log('Video track restarted successfully');
+        }
+      } catch (error) {
+        console.error('Error restarting video track:', error);
+      }
+    }
+
+    // Check if audio track ended
+    if (audioTrack && audioTrack.readyState === 'ended') {
+      console.log('Restarting audio track after tab became visible');
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+        
+        const newAudioTrack = newStream.getAudioTracks()[0];
+        this.localStream.removeTrack(audioTrack);
+        this.localStream.addTrack(newAudioTrack);
+        
+        // Setup ended handler for new track
+        newAudioTrack.onended = () => {
+          console.warn('Audio track ended unexpectedly');
+        };
+        
+        // Update peer connections
+        this.peers.forEach(peer => {
+          const sender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'audio');
+          if (sender) {
+            sender.replaceTrack(newAudioTrack).catch(e => {
+              console.error('Error replacing audio track:', e);
+            });
+          }
+        });
+        
+        console.log('Audio track restarted successfully');
+      } catch (error) {
+        console.error('Error restarting audio track:', error);
+      }
+    }
+  }
+
+  private joinRoom() {
+    if (!this.socket) return;
+
+    this.socket.send(JSON.stringify({
+      type: 'join',
+      roomId: this.roomId,
+      userId: this.userId,
+      displayName: this.displayName
+    }));
+  }
+
   private async handleSignalingMessage(data: any) {
     switch (data.type) {
+      case 'user-joined':
+        await this.handleUserJoined(data);
+        break;
+      case 'user-left':
+        this.handleUserLeft(data);
+        break;
       case 'offer':
         await this.handleOffer(data);
         break;
@@ -138,11 +337,15 @@ export class WebRTCManager {
   private async handleUserJoined(data: any) {
     console.log('User joined:', data.userId);
 
+    // Don't create connection to ourselves
     if (data.userId === this.userId) {
+      console.log('Ignoring self join event');
       return;
     }
 
+    // Check if peer already exists
     if (this.peers.has(data.userId)) {
+      console.log('Peer already exists:', data.userId);
       return;
     }
 
@@ -154,9 +357,11 @@ export class WebRTCManager {
     this.peers.set(data.userId, peer);
     this.iceCandidateBuffers.set(data.userId, []);
     
+    // Create peer connection and offer with retry
     try {
       await this.createPeerConnection(data.userId);
       await this.createOffer(data.userId);
+      console.log('Successfully created peer connection and offer for:', data.userId);
     } catch (error) {
       console.error('Error creating connection for:', data.userId, error);
       this.peers.delete(data.userId);
@@ -196,36 +401,53 @@ export class WebRTCManager {
 
     // Add local stream tracks
     if (this.localStream && this.localStream.getTracks().length > 0) {
+      console.log('Adding local tracks to peer connection:', peerId);
       this.localStream.getTracks().forEach(track => {
+        console.log('Adding track:', track.kind, track.label);
         peerConnection.addTrack(track, this.localStream!);
       });
+    } else {
+      console.warn('No local tracks to add for peer:', peerId);
     }
 
     // Handle incoming tracks
     peerConnection.ontrack = (event) => {
       console.log('Received remote track from:', peerId, 'kind:', event.track.kind);
-      
-      // Disable all audio tracks from remote peers - no one should hear anyone
-      if (event.track.kind === 'audio') {
-        event.track.enabled = false;
-        console.log('Muted audio track from peer:', peerId);
-      }
-      
       const peer = this.peers.get(peerId);
       if (peer) {
         if (!peer.stream) {
           peer.stream = event.streams[0];
+          console.log('Set remote stream for peer:', peerId);
         } else {
           // Add track to existing stream
           peer.stream.addTrack(event.track);
+          console.log('Added track to existing stream for peer:', peerId);
         }
         this.notifyPeersUpdate();
       }
     };
 
     // Monitor connection state
+    peerConnection.onconnectionstatechange = () => {
+      console.log(`Connection state for ${peerId}:`, peerConnection.connectionState);
+      if (peerConnection.connectionState === 'failed') {
+        console.error('Connection failed for peer:', peerId);
+        // Attempt to restart ICE
+        peerConnection.restartIce();
+      }
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+      console.log(`ICE connection state for ${peerId}:`, peerConnection.iceConnectionState);
+      if (peerConnection.iceConnectionState === 'failed') {
+        console.error('ICE connection failed for peer:', peerId);
+      }
+    };
+
+    // Handle ICE candidates
     peerConnection.onicecandidate = (event) => {
       if (event.candidate && this.channel) {
+        console.log('Sending ICE candidate to:', peerId, 'type:', event.candidate.type);
         this.channel.send({
           type: 'broadcast',
           event: 'webrtc',
@@ -236,6 +458,8 @@ export class WebRTCManager {
             from: this.userId,
           },
         });
+      } else if (!event.candidate) {
+        console.log('ICE gathering complete for:', peerId);
       }
     };
 
@@ -252,6 +476,7 @@ export class WebRTCManager {
     const offer = await peer.peerConnection.createOffer();
     await peer.peerConnection.setLocalDescription(offer);
 
+    console.log('Sending offer to:', peerId);
     this.channel.send({
       type: 'broadcast',
       event: 'webrtc',
@@ -267,8 +492,11 @@ export class WebRTCManager {
 
   private async handleOffer(data: any) {
     const peerId = data.from;
+    console.log('Received offer from:', peerId);
     
+    // Create peer if doesn't exist
     if (!this.peers.has(peerId)) {
+      console.log('Creating new peer entry for:', peerId);
       this.peers.set(peerId, {
         id: peerId,
         displayName: data.displayName || 'Anonymous'
@@ -280,14 +508,17 @@ export class WebRTCManager {
 
     const peer = this.peers.get(peerId);
     if (!peer?.peerConnection) {
+      console.error('Failed to create peer connection for:', peerId);
       return;
     }
 
     try {
       await peer.peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+      console.log('Set remote description from offer for:', peerId);
       
       // Process buffered ICE candidates
       const bufferedCandidates = this.iceCandidateBuffers.get(peerId) || [];
+      console.log(`Processing ${bufferedCandidates.length} buffered ICE candidates for:`, peerId);
       for (const candidate of bufferedCandidates) {
         try {
           await peer.peerConnection.addIceCandidate(candidate);
@@ -300,6 +531,7 @@ export class WebRTCManager {
       const answer = await peer.peerConnection.createAnswer();
       await peer.peerConnection.setLocalDescription(answer);
 
+      console.log('Sending answer to:', peerId);
       this.channel?.send({
         type: 'broadcast',
         event: 'webrtc',
@@ -319,17 +551,21 @@ export class WebRTCManager {
 
   private async handleAnswer(data: any) {
     const peerId = data.from;
+    console.log('Received answer from:', peerId);
     
     const peer = this.peers.get(peerId);
     if (!peer?.peerConnection) {
+      console.error('No peer connection found for:', peerId);
       return;
     }
 
     try {
       await peer.peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+      console.log('Set remote description from answer for:', peerId);
       
       // Process buffered ICE candidates
       const bufferedCandidates = this.iceCandidateBuffers.get(peerId) || [];
+      console.log(`Processing ${bufferedCandidates.length} buffered ICE candidates for:`, peerId);
       for (const candidate of bufferedCandidates) {
         try {
           await peer.peerConnection.addIceCandidate(candidate);
@@ -347,15 +583,19 @@ export class WebRTCManager {
 
   private async handleIceCandidate(data: any) {
     const peerId = data.from;
+    console.log('Received ICE candidate from:', peerId, 'type:', data.candidate.type);
     
     const peer = this.peers.get(peerId);
     if (!peer?.peerConnection) {
+      console.warn('No peer connection for ICE candidate from:', peerId);
       return;
     }
 
     const candidate = new RTCIceCandidate(data.candidate);
     
+    // If remote description isn't set yet, buffer the candidate
     if (!peer.peerConnection.remoteDescription) {
+      console.log('Buffering ICE candidate for:', peerId);
       const buffer = this.iceCandidateBuffers.get(peerId) || [];
       buffer.push(candidate);
       this.iceCandidateBuffers.set(peerId, buffer);
@@ -364,6 +604,7 @@ export class WebRTCManager {
 
     try {
       await peer.peerConnection.addIceCandidate(candidate);
+      console.log('Added ICE candidate for:', peerId);
     } catch (error) {
       console.error('Error adding ICE candidate for:', peerId, error);
     }
@@ -410,125 +651,61 @@ export class WebRTCManager {
   async toggleVideo() {
     if (!this.localStream) return false;
     
-    let videoTrack = this.localStream.getVideoTracks()[0];
-    let audioTrack = this.localStream.getAudioTracks()[0];
+    const videoTrack = this.localStream.getVideoTracks()[0];
     
-    // 1. Turn OFF
-    if (videoTrack?.enabled || videoTrack?.readyState === 'live') {
-      
-      // Stop and remove video track
-      videoTrack.stop(); 
+    // If track exists and is enabled, turn it OFF
+    if (videoTrack?.enabled) {
+      videoTrack.stop();
       this.localStream.removeTrack(videoTrack);
       
-      // Stop and remove associated audio track (CRITICAL for turning off mic light)
-      if (audioTrack) {
-        audioTrack.stop();
-        this.localStream.removeTrack(audioTrack);
-      }
-      
-      this.wasVideoEnabled = false;
-      this.wasScreenSharing = false;
-      
-      // Update peer connections: replace tracks with null
+      // Update peer connections
       this.peers.forEach(peer => {
-        const videoSender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
-        if (videoSender) {
-          videoSender.replaceTrack(null);
-        }
-        const audioSender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'audio');
-        if (audioSender) {
-            audioSender.replaceTrack(null);
+        const sender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
+        if (sender) {
+          sender.replaceTrack(null);
         }
       });
       
       return false;
     } else {
-      // 2. Turn ON: Request media and add track
+      // Turn ON: get new video stream (either no track or track is disabled)
       try {
-        // Request camera and microphone permissions
+        // If there's a disabled track, remove it first
+        if (videoTrack) {
+          videoTrack.stop();
+          this.localStream.removeTrack(videoTrack);
+        }
+        
         const newStream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 1280, height: 720 },
-          audio: true 
+          video: { width: 1280, height: 720 }
         });
         
         const newVideoTrack = newStream.getVideoTracks()[0];
-        const newAudioTrack = newStream.getAudioTracks()[0];
-        
-        // Handle audio track: mute it and add it
-        if (newAudioTrack) {
-          newAudioTrack.enabled = false; // Mute audio to prevent echo
-          const existingAudioTrack = this.localStream.getAudioTracks()[0];
-          if (existingAudioTrack) {
-            existingAudioTrack.stop();
-            this.localStream.removeTrack(existingAudioTrack);
-          }
-          this.localStream.addTrack(newAudioTrack);
-        }
-        
-        if (!newVideoTrack) {
-          console.error('Failed to get video track.');
-          return false;
-        }
-        
         this.localStream.addTrack(newVideoTrack);
-        this.wasVideoEnabled = true;
-        this.wasScreenSharing = false;
-        
-        // Setup ended handler for new track
-        newVideoTrack.onended = async () => {
-          console.warn('Video track ended unexpectedly');
-          
-          // Stop and remove associated audio track too
-          const currentAudioTrack = this.localStream?.getAudioTracks()[0];
-          if (currentAudioTrack) {
-              currentAudioTrack.stop();
-              this.localStream?.removeTrack(currentAudioTrack);
-          }
-          this.localStream?.removeTrack(newVideoTrack);
-          
-          this.peers.forEach(peer => {
-            const videoSender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
-            if (videoSender) {
-              videoSender.replaceTrack(null);
-            }
-            const audioSender = peer.peerConnection?.getSenders().find(s => s.track?.kind === 'audio');
-            if (audioSender) {
-                audioSender.replaceTrack(null);
-            }
-          });
-          this.wasVideoEnabled = false;
-          this.notifyPeersUpdate();
-        };
         
         // Update peer connections - add or replace track
-        this.peers.forEach(peer => {
+        const peersNeedingRenegotiation: string[] = [];
+        this.peers.forEach((peer, peerId) => {
           if (!peer.peerConnection) return;
           
-          const videoSender = peer.peerConnection.getSenders().find(s => s.track?.kind === 'video');
-          
-          if (videoSender) {
-            videoSender.replaceTrack(newVideoTrack);
+          const sender = peer.peerConnection.getSenders().find(s => s.track?.kind === 'video' || s.track === null);
+          if (sender) {
+            sender.replaceTrack(newVideoTrack);
           } else {
             // If no sender exists yet, add the track and mark for renegotiation
-            peer.peerConnection!.addTrack(newVideoTrack, this.localStream!);
-            this.renegotiate(peer.id);
-          }
-          
-          // Handle audio track replacement/addition
-          const audioSender = peer.peerConnection.getSenders().find(s => s.track?.kind === 'audio');
-          if (newAudioTrack) {
-             if (audioSender) {
-                audioSender.replaceTrack(newAudioTrack);
-             } else {
-                peer.peerConnection!.addTrack(newAudioTrack, this.localStream!);
-                this.renegotiate(peer.id);
-             }
+            peer.peerConnection.addTrack(newVideoTrack, this.localStream!);
+            peersNeedingRenegotiation.push(peerId);
           }
         });
         
+        // Renegotiate with peers that needed new tracks added
+        for (const peerId of peersNeedingRenegotiation) {
+          await this.renegotiate(peerId);
+        }
+        
         return true;
       } catch (error) {
-        console.error('Error starting video/getting media:', error);
+        console.error('Error starting video:', error);
         return false;
       }
     }
@@ -542,14 +719,13 @@ export class WebRTCManager {
   async toggleScreenShare() {
     if (!this.localStream) return false;
 
-    const currentVideoTrack = this.localStream.getVideoTracks()[0];
-    const isCurrentlySharingScreen = currentVideoTrack && (currentVideoTrack as any).getSettings?.().displaySurface;
+    const videoTrack = this.localStream.getVideoTracks()[0];
     
-    // 1. Stop screen share
-    if (isCurrentlySharingScreen) {
-      currentVideoTrack.stop();
-      this.localStream.removeTrack(currentVideoTrack);
-      this.wasScreenSharing = false;
+    // Check if currently sharing screen (track has specific constraints)
+    if (videoTrack && (videoTrack as any).getSettings?.().displaySurface) {
+      // Stop screen share, go back to camera only if video was enabled before
+      videoTrack.stop();
+      this.localStream.removeTrack(videoTrack);
       
       // Only restore camera if it was enabled before screen sharing
       if (this.wasVideoEnabledBeforeScreenShare) {
@@ -568,10 +744,8 @@ export class WebRTCManager {
               sender.replaceTrack(newVideoTrack);
             }
           });
-          this.wasVideoEnabled = true;
         } catch (error) {
           console.error('Error returning to camera:', error);
-          this.wasVideoEnabled = false;
         }
       } else {
         // Update peer connections to remove video
@@ -581,20 +755,12 @@ export class WebRTCManager {
             sender.replaceTrack(null);
           }
         });
-        
-        // If we are not restoring the camera, we must stop the audio track too.
-        const audioTrack = this.localStream.getAudioTracks()[0];
-        if (audioTrack) {
-            audioTrack.stop();
-            this.localStream.removeTrack(audioTrack);
-        }
-        this.wasVideoEnabled = false;
       }
       
       return false; // Not sharing anymore
     } else {
-      // 2. Start screen share - remember current video state
-      this.wasVideoEnabledBeforeScreenShare = currentVideoTrack?.enabled || false;
+      // Start screen share - remember current video state
+      this.wasVideoEnabledBeforeScreenShare = videoTrack?.enabled || false;
       
       try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
@@ -605,17 +771,16 @@ export class WebRTCManager {
         const screenTrack = screenStream.getVideoTracks()[0];
         
         // Stop current video track
-        if (currentVideoTrack) {
-          currentVideoTrack.stop();
-          this.localStream.removeTrack(currentVideoTrack);
+        if (videoTrack) {
+          videoTrack.stop();
+          this.localStream.removeTrack(videoTrack);
         }
         
         this.localStream.addTrack(screenTrack);
-        this.wasScreenSharing = true;
-        this.wasVideoEnabled = true; // Screen share counts as video enabled
         
         // Update peer connections
-        this.peers.forEach(peer => {
+        const peersNeedingRenegotiation: string[] = [];
+        this.peers.forEach((peer, peerId) => {
           if (!peer.peerConnection) return;
           
           const sender = peer.peerConnection.getSenders().find(s => s.track?.kind === 'video' || s.track === null);
@@ -623,15 +788,18 @@ export class WebRTCManager {
             sender.replaceTrack(screenTrack);
           } else {
             peer.peerConnection.addTrack(screenTrack, this.localStream!);
-            this.renegotiate(peer.id);
+            peersNeedingRenegotiation.push(peerId);
           }
         });
 
+        // Renegotiate with peers that needed new tracks added
+        for (const peerId of peersNeedingRenegotiation) {
+          await this.renegotiate(peerId);
+        }
+
         // Handle when user stops sharing via browser UI
         screenTrack.onended = async () => {
-          
           this.localStream?.removeTrack(screenTrack);
-          this.wasScreenSharing = false;
           
           // Only restore camera if it was enabled before screen sharing
           if (this.wasVideoEnabledBeforeScreenShare) {
@@ -648,10 +816,8 @@ export class WebRTCManager {
                   sender.replaceTrack(newVideoTrack);
                 }
               });
-              this.wasVideoEnabled = true;
             } catch (e) {
               console.error('Error returning to camera after screen share ended:', e);
-              this.wasVideoEnabled = false;
             }
           } else {
             // Remove video track from peer connections
@@ -661,16 +827,7 @@ export class WebRTCManager {
                 sender.replaceTrack(null);
               }
             });
-            
-            // Stop audio track if camera wasn't enabled before
-            const audioTrack = this.localStream?.getAudioTracks()[0];
-            if (audioTrack) {
-                audioTrack.stop();
-                this.localStream?.removeTrack(audioTrack);
-            }
-            this.wasVideoEnabled = false;
           }
-          this.notifyPeersUpdate();
         };
         
         return true; // Now sharing
@@ -693,7 +850,7 @@ export class WebRTCManager {
       peer.peerConnection?.close();
     });
 
-    // Stop local stream tracks (CRITICAL for turning off camera/mic light on exit)
+    // Stop local stream
     if (this.localStream) {
       this.localStream.getTracks().forEach(track => track.stop());
     }
