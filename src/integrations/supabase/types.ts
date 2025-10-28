@@ -14,116 +14,13 @@ export type Database = {
   }
   public: {
     Tables: {
-      study_sessions: {
-        Row: {
-          date: string
-          ended_at: string | null
-          id: string
-          minutes_studied: number
-          room_id: string
-          started_at: string | null
-          user_id: string | null
-        }
-        Insert: {
-          date?: string
-          ended_at?: string | null
-          id?: string
-          minutes_studied?: number
-          room_id: string
-          started_at?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          date?: string
-          ended_at?: string | null
-          id?: string
-          minutes_studied?: number
-          room_id?: string
-          started_at?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "study_sessions_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      user_stats: {
-        Row: {
-          current_streak: number | null
-          id: string
-          last_study_date: string | null
-          longest_streak: number | null
-          total_minutes: number | null
-          updated_at: string | null
-          user_id: string | null
-        }
-        Insert: {
-          current_streak?: number | null
-          id?: string
-          last_study_date?: string | null
-          longest_streak?: number | null
-          total_minutes?: number | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          current_streak?: number | null
-          id?: string
-          last_study_date?: string | null
-          longest_streak?: number | null
-          total_minutes?: number | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "user_stats_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: true
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      users: {
-        Row: {
-          created_at: string | null
-          display_name: string | null
-          id: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string | null
-          display_name?: string | null
-          id?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string | null
-          display_name?: string | null
-          id?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
+      [_ in never]: never
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      get_daily_minutes: {
-        Args: { p_date: string; p_user_id: string }
-        Returns: number
-      }
-      get_period_minutes: {
-        Args: { p_start_date: string; p_user_id: string }
-        Returns: number
-      }
+      [_ in never]: never
     }
     Enums: {
       [_ in never]: never

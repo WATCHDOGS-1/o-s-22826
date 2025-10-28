@@ -7,7 +7,7 @@ import { TrendingUp, Edit2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface ProgressStatsProps {
-  userId: string; // This should be the localStorage userId (text), not auth user id
+  userId: string;
   autoRefresh?: boolean;
 }
 
@@ -15,7 +15,6 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
   const [dailyMinutes, setDailyMinutes] = useState(0);
   const [weeklyMinutes, setWeeklyMinutes] = useState(0);
   const [monthlyMinutes, setMonthlyMinutes] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
   
   const [dailyGoal, setDailyGoal] = useState(120);
   const [weeklyGoal, setWeeklyGoal] = useState(840);
@@ -48,77 +47,52 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
       setTempMonthlyGoal(savedMonthlyGoal);
     }
     
-    // Load progress directly
     loadProgress();
     
-    // Subscribe to realtime updates
-    const channel = supabase
-      .channel('study_sessions_updates')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'study_sessions'
-        },
-        () => {
-          loadProgress();
-        }
-      )
-      .subscribe();
-    
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    // Auto-refresh every minute if enabled
+    if (autoRefresh) {
+      const interval = setInterval(() => {
+        loadProgress();
+      }, 60000); // 60 seconds
+      
+      return () => clearInterval(interval);
+    }
   }, [userId, autoRefresh]);
 
   const loadProgress = async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
     try {
-      setIsLoading(true);
-      
-      // First get the database user ID
-      const { data: user, error: userError } = await (supabase as any)
-        .from('users')
-        .select('id')
-        .eq('user_id', userId)
-        .maybeSingle();
-      
-      if (userError || !user) {
-        console.error('Error fetching user:', userError);
-        setIsLoading(false);
-        return;
+      // Daily - use raw SQL via RPC with type assertion
+      const { data: dailyData, error: dailyError } = await supabase.rpc(
+        'get_daily_minutes' as any,
+        { p_user_id: userId, p_date: today } as any
+      );
+      if (!dailyError) {
+        setDailyMinutes(dailyData || 0);
       }
 
-      const dbUserId = user.id;
-      const today = new Date().toISOString().split('T')[0];
-      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-      // Daily
-      const { data: dailyData } = await (supabase.rpc as any)(
-        'get_daily_minutes',
-        { p_user_id: dbUserId, p_date: today }
-      );
-      setDailyMinutes((dailyData as number) || 0);
-
       // Weekly
-      const { data: weeklyData } = await (supabase.rpc as any)(
-        'get_period_minutes',
-        { p_user_id: dbUserId, p_start_date: weekAgo }
+      const { data: weeklyData, error: weeklyError } = await supabase.rpc(
+        'get_period_minutes' as any,
+        { p_user_id: userId, p_start_date: weekAgo } as any
       );
-      setWeeklyMinutes((weeklyData as number) || 0);
+      if (!weeklyError) {
+        setWeeklyMinutes(weeklyData || 0);
+      }
 
       // Monthly
-      const { data: monthlyData } = await (supabase.rpc as any)(
-        'get_period_minutes',
-        { p_user_id: dbUserId, p_start_date: monthAgo }
+      const { data: monthlyData, error: monthlyError } = await supabase.rpc(
+        'get_period_minutes' as any,
+        { p_user_id: userId, p_start_date: monthAgo } as any
       );
-      setMonthlyMinutes((monthlyData as number) || 0);
-      
-      setIsLoading(false);
+      if (!monthlyError) {
+        setMonthlyMinutes(monthlyData || 0);
+      }
     } catch (error) {
       console.error('Error loading progress:', error);
-      setIsLoading(false);
     }
   };
 
@@ -154,10 +128,7 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
         <h3 className="font-semibold text-foreground">Progress Goals</h3>
       </div>
 
-      {isLoading ? (
-        <div className="text-center py-8 text-muted-foreground">Loading...</div>
-      ) : (
-        <div className="space-y-6">
+      <div className="space-y-6">
         <div>
           <div className="flex justify-between items-center text-sm mb-2">
             <span className="text-foreground font-medium">Daily</span>
@@ -290,7 +261,6 @@ const ProgressStats = ({ userId, autoRefresh = false }: ProgressStatsProps) => {
           <Progress value={(monthlyMinutes / monthlyGoal) * 100} className="h-2 [&>div]:bg-purple-500" />
         </div>
       </div>
-      )}
     </Card>
   );
 };

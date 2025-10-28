@@ -46,7 +46,7 @@ const Home = () => {
         <header className="text-center mb-12">
           <div className="flex items-center justify-center gap-4 mb-4">
             <h1 className="text-6xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              OnlyFocus
+              OnlyStudies
             </h1>
             {user && (
               <Button variant="outline" size="sm" onClick={handleSignOut}>
