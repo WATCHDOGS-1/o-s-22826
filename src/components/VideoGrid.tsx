@@ -4,10 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Video, VideoOff, Mic, MicOff, Monitor, Pin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-
-interface VideoGridProps {
-  userId: string;
-}
+import { useUser } from '@/contexts/UserContext';
 
 interface Participant {
   id: string;
@@ -16,20 +13,19 @@ interface Participant {
   pinned?: boolean;
 }
 
-const VideoGrid: React.FC<VideoGridProps> = ({ userId }) => {
+const VideoGrid: React.FC = () => {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [maxVideos, setMaxVideos] = useState(4);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [videoEnabled, setVideoEnabled] = useState(true);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [screenSharing, setScreenSharing] = useState(false);
-  const [username, setUsername] = useState('');
+  const { username } = useUser();
   const { toast } = useToast();
   const videoRefs = useRef<{ [key: string]: HTMLVideoElement | null }>({});
   const channelRef = useRef<any>(null);
 
   useEffect(() => {
-    loadProfile();
     initializeMedia();
     setupPresenceChannel();
 
@@ -41,17 +37,7 @@ const VideoGrid: React.FC<VideoGridProps> = ({ userId }) => {
         supabase.removeChannel(channelRef.current);
       }
     };
-  }, [userId]);
-
-  const loadProfile = async () => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('username')
-      .eq('id', userId)
-      .single();
-    
-    if (data) setUsername(data.username);
-  };
+  }, [username]);
 
   const initializeMedia = async () => {
     try {
@@ -61,7 +47,6 @@ const VideoGrid: React.FC<VideoGridProps> = ({ userId }) => {
       });
       setLocalStream(stream);
       
-      // Add local video
       if (videoRefs.current['local']) {
         videoRefs.current['local']!.srcObject = stream;
       }
@@ -87,7 +72,7 @@ const VideoGrid: React.FC<VideoGridProps> = ({ userId }) => {
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
         const users = Object.values(state).flat() as any[];
-        setParticipants(users.map(u => ({ id: u.user_id, username: u.username })));
+        setParticipants(users.map(u => ({ id: u.id, username: u.username })));
       })
       .on('presence', { event: 'join' }, ({ newPresences }) => {
         toast({
@@ -104,7 +89,7 @@ const VideoGrid: React.FC<VideoGridProps> = ({ userId }) => {
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           await channel.track({
-            user_id: userId,
+            id: Math.random().toString(36).substr(2, 9),
             username: username,
             online_at: new Date().toISOString(),
           });
@@ -136,17 +121,13 @@ const VideoGrid: React.FC<VideoGridProps> = ({ userId }) => {
         video: true,
       });
       
-      // Replace video track
-      const videoTrack = screenStream.getVideoTracks()[0];
-      const sender = localStream?.getVideoTracks()[0];
-      
       if (videoRefs.current['local']) {
         videoRefs.current['local']!.srcObject = screenStream;
       }
 
       setScreenSharing(true);
       
-      videoTrack.onended = () => {
+      screenStream.getVideoTracks()[0].onended = () => {
         setScreenSharing(false);
         if (localStream && videoRefs.current['local']) {
           videoRefs.current['local']!.srcObject = localStream;
@@ -171,7 +152,7 @@ const VideoGrid: React.FC<VideoGridProps> = ({ userId }) => {
   };
 
   const displayedParticipants = [
-    { id: 'local', username: 'You (Local)', stream: localStream, pinned: false },
+    { id: 'local', username: `You (${username})`, stream: localStream, pinned: false },
     ...participants,
   ].slice(0, maxVideos);
 

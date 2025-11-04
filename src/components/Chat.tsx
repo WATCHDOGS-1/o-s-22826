@@ -3,10 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Send } from 'lucide-react';
-
-interface ChatProps {
-  userId: string;
-}
+import { useUser } from '@/contexts/UserContext';
 
 interface Message {
   id: string;
@@ -15,14 +12,13 @@ interface Message {
   created_at: string;
 }
 
-const Chat: React.FC<ChatProps> = ({ userId }) => {
+const Chat: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [username, setUsername] = useState('');
+  const { username } = useUser();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    loadProfile();
     loadMessages();
     subscribeToMessages();
   }, []);
@@ -30,16 +26,6 @@ const Chat: React.FC<ChatProps> = ({ userId }) => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
-  const loadProfile = async () => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('username')
-      .eq('id', userId)
-      .single();
-    
-    if (data) setUsername(data.username);
-  };
 
   const loadMessages = async () => {
     const { data } = await supabase
@@ -78,7 +64,7 @@ const Chat: React.FC<ChatProps> = ({ userId }) => {
 
     await supabase.from('chat_messages').insert([
       {
-        user_id: userId,
+        user_id: username,
         username,
         message: newMessage,
       },

@@ -1,18 +1,15 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { LogOut, User } from 'lucide-react';
+import { useUser } from '@/contexts/UserContext';
 
-interface HeaderProps {
-  userId: string;
-}
-
-const Header: React.FC<HeaderProps> = ({ userId }) => {
+const Header: React.FC = () => {
   const navigate = useNavigate();
+  const { username, logout } = useUser();
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    logout();
     navigate('/auth');
   };
 
@@ -24,6 +21,10 @@ const Header: React.FC<HeaderProps> = ({ userId }) => {
         </h1>
         
         <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 glass px-4 py-2 rounded-lg border border-primary/30">
+            <User size={18} className="text-primary" />
+            <span className="font-medium text-primary">{username}</span>
+          </div>
           <Button
             variant="ghost"
             size="sm"

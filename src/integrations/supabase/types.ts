@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      chat_messages: {
+        Row: {
+          created_at: string | null
+          id: string
+          message: string
+          user_id: string
+          username: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          message: string
+          user_id: string
+          username: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          message?: string
+          user_id?: string
+          username?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -113,6 +137,10 @@ export type Database = {
       get_period_minutes: {
         Args: { p_start_date: string; p_user_id: string }
         Returns: number
+      }
+      update_user_study_stats: {
+        Args: { p_minutes: number; p_user_id: string }
+        Returns: undefined
       }
     }
     Enums: {

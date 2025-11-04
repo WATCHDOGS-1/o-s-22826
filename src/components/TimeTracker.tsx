@@ -3,17 +3,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Play, Pause } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useUser } from '@/contexts/UserContext';
 
-interface TimeTrackerProps {
-  userId: string;
-}
-
-const TimeTracker: React.FC<TimeTrackerProps> = ({ userId }) => {
+const TimeTracker: React.FC = () => {
   const [isTracking, setIsTracking] = useState(false);
   const [sessionTime, setSessionTime] = useState(0);
   const [dailyTime, setDailyTime] = useState(0);
   const [weeklyTime, setWeeklyTime] = useState(0);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const { username } = useUser();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -25,29 +23,30 @@ const TimeTracker: React.FC<TimeTrackerProps> = ({ userId }) => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isTracking]);
+  }, [isTracking, username]);
 
   const loadStats = async () => {
     const { data: stats } = await supabase
       .from('user_stats')
-      .select('daily_minutes, weekly_minutes')
-      .eq('user_id', userId)
-      .single();
+      .select('*')
+      .eq('user_id', username)
+      .maybeSingle();
 
     if (stats) {
-      setDailyTime(stats.daily_minutes);
-      setWeeklyTime(stats.weekly_minutes);
+      setDailyTime(stats.daily_minutes || 0);
+      setWeeklyTime(stats.weekly_minutes || 0);
     }
   };
 
   const startTracking = async () => {
-    const { data, error } = await supabase
+    const sessionId = Math.random().toString(36).substr(2, 9);
+    
+    const { error } = await supabase
       .from('study_sessions')
-      .insert([{ user_id: userId }])
-      .select()
-      .single();
+      .insert([{ id: sessionId, user_id: username, room_id: 'global' }]);
 
     if (error) {
+      console.error('Error starting session:', error);
       toast({
         title: "Error",
         description: "Failed to start session",
@@ -56,7 +55,7 @@ const TimeTracker: React.FC<TimeTrackerProps> = ({ userId }) => {
       return;
     }
 
-    setCurrentSessionId(data.id);
+    setCurrentSessionId(sessionId);
     setIsTracking(true);
     setSessionTime(0);
 
@@ -80,6 +79,7 @@ const TimeTracker: React.FC<TimeTrackerProps> = ({ userId }) => {
       .eq('id', currentSessionId);
 
     if (error) {
+      console.error('Error saving session:', error);
       toast({
         title: "Error",
         description: "Failed to save session",
@@ -87,6 +87,12 @@ const TimeTracker: React.FC<TimeTrackerProps> = ({ userId }) => {
       });
       return;
     }
+
+    // Update stats
+    await supabase.rpc('update_user_study_stats', {
+      p_user_id: username,
+      p_minutes: minutes
+    });
 
     setIsTracking(false);
     setCurrentSessionId(null);

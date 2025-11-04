@@ -3,9 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Trophy } from 'lucide-react';
 
 interface LeaderboardEntry {
-  username: string;
+  user_id: string;
   weekly_minutes: number;
-  avatar_url: string | null;
 }
 
 const Leaderboard = () => {
@@ -22,20 +21,12 @@ const Leaderboard = () => {
   const loadLeaderboard = async () => {
     const { data } = await supabase
       .from('user_stats')
-      .select(`
-        weekly_minutes,
-        profiles (username, avatar_url)
-      `)
+      .select('user_id, weekly_minutes')
       .order('weekly_minutes', { ascending: false })
       .limit(10);
 
     if (data) {
-      const formatted = data.map((entry: any) => ({
-        username: entry.profiles?.username || 'Unknown',
-        weekly_minutes: entry.weekly_minutes,
-        avatar_url: entry.profiles?.avatar_url,
-      }));
-      setLeaders(formatted);
+      setLeaders(data);
     }
   };
 
@@ -49,7 +40,7 @@ const Leaderboard = () => {
       <div className="space-y-3">
         {leaders.map((leader, index) => (
           <div
-            key={index}
+            key={leader.user_id}
             className={`flex items-center gap-3 p-3 rounded-xl border transition-all hover:scale-105 ${
               index === 0
                 ? 'border-accent bg-accent/10 glow-strong'
@@ -69,18 +60,12 @@ const Leaderboard = () => {
               {index + 1}
             </div>
 
-            <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-primary">
-              {leader.avatar_url ? (
-                <img src={leader.avatar_url} alt={leader.username} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full bg-gradient-primary flex items-center justify-center font-bold">
-                  {leader.username[0]?.toUpperCase()}
-                </div>
-              )}
+            <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-primary bg-gradient-primary flex items-center justify-center font-bold text-white">
+              {leader.user_id[0]?.toUpperCase()}
             </div>
 
             <div className="flex-1">
-              <div className="font-medium">{leader.username}</div>
+              <div className="font-medium">{leader.user_id}</div>
               <div className="text-sm text-muted-foreground">
                 {Math.floor(leader.weekly_minutes / 60)}h {leader.weekly_minutes % 60}m
               </div>
