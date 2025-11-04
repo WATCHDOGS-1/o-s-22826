@@ -1,19 +1,14 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import Index from "./pages/Index";
-import React from "react";
-import { UserProvider } from "./hooks/useUser";
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Index from './pages/Index';
 
 const App = () => (
-  <TooltipProvider>
-    <UserProvider>
-      {/* Using Sonner for toasts as requested in the FocusTimer component */}
-      <Sonner /> 
-      <Toaster />
-      <Index />
-    </UserProvider>
-  </TooltipProvider>
+  <Router>
+    <Routes>
+      <Route path="/" element={<Index />} />
+      {/* Add more routes here */}
+    </Routes>
+  </Router>
 );
 
 export default App;
