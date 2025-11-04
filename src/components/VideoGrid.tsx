@@ -31,6 +31,7 @@ const VideoGrid: React.FC = () => {
   // Stable local ID for signaling and presence tracking
   const localUserId = useRef(Math.random().toString(36).substr(2, 9));
 
+  // 1. Initialization and Cleanup
   useEffect(() => {
     if (username) {
       initializeMedia();
@@ -47,6 +48,28 @@ const VideoGrid: React.FC = () => {
       }
     };
   }, [username]);
+
+  // 2. Effect to add tracks to existing PCs once localStream is ready
+  useEffect(() => {
+    if (localStream) {
+      // Attach local stream to local video element
+      if (videoRefs.current[localUserId.current]) {
+        videoRefs.current[localUserId.current]!.srcObject = localStream;
+      }
+
+      // Add tracks to all existing peer connections
+      peerConnections.current.forEach(pc => {
+        localStream.getTracks().forEach(track => {
+          // Check if track is already added to avoid duplicates
+          const sender = pc.getSenders().find(s => s.track === track);
+          if (!sender) {
+            pc.addTrack(track, localStream);
+          }
+        });
+      });
+    }
+  }, [localStream]);
+
 
   // --- WebRTC Signaling and Connection Management ---
 
@@ -77,16 +100,19 @@ const VideoGrid: React.FC = () => {
 
     pc.ontrack = (event) => {
       const [remoteStream] = event.streams;
-      setParticipants(prev => prev.map(p => 
-        p.id === remoteId ? { ...p, stream: remoteStream } : p
-      ));
       
-      // Attach stream to video element if it exists
+      // Attach stream to video element immediately
       if (videoRefs.current[remoteId]) {
         videoRefs.current[remoteId]!.srcObject = remoteStream;
       }
+
+      // Update state to ensure stream reference is maintained
+      setParticipants(prev => prev.map(p => 
+        p.id === remoteId ? { ...p, stream: remoteStream } : p
+      ));
     };
 
+    // Add tracks if localStream is already available (redundant due to useEffect, but safer)
     if (localStream) {
       localStream.getTracks().forEach(track => pc.addTrack(track, localStream!));
     }
@@ -149,10 +175,6 @@ const VideoGrid: React.FC = () => {
       });
       setLocalStream(stream);
       
-      if (videoRefs.current[localUserId.current]) {
-        videoRefs.current[localUserId.current]!.srcObject = stream;
-      }
-
       toast({
         title: "Camera Ready",
         description: "Your video is now live",
@@ -185,6 +207,7 @@ const VideoGrid: React.FC = () => {
           .map(u => ({ 
             id: u.id, 
             username: u.username,
+            // Preserve existing stream reference if available
             stream: participants.find(p => p.id === u.id)?.stream,
           }));
         
@@ -247,6 +270,9 @@ const VideoGrid: React.FC = () => {
     if (localStream) {
       const tracks = kind === 'video' ? localStream.getVideoTracks() : localStream.getAudioTracks();
       tracks.forEach(track => (track.enabled = enabled));
+      
+      // Notify peers about track changes (though WebRTC handles this automatically, 
+      // toggling the track.enabled property is sufficient for most browsers)
     }
   };
 
@@ -281,6 +307,7 @@ const VideoGrid: React.FC = () => {
           if (sender) {
               sender.replaceTrack(videoTrack);
           } else {
+              // Should not happen if camera stream was initialized
               pc.addTrack(videoTrack, screenStream);
           }
       });
@@ -361,8 +388,8 @@ const VideoGrid: React.FC = () => {
             <video
               ref={(el) => {
                 videoRefs.current[participant.id] = el;
-                // Attach stream if available
-                if (el && participant.stream) {
+                // Attach stream if available (only needed for local stream initialization)
+                if (el && participant.id === localUserId.current && participant.stream) {
                     el.srcObject = participant.stream;
                 }
               }}

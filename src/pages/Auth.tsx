@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { useUser } from '@/contexts/UserContext';
 import Leaderboard from '@/components/Leaderboard';
+import { supabase } from '@/integrations/supabase/client';
 
 const Auth = () => {
   const [username, setUsernameInput] = useState('');
@@ -19,10 +20,12 @@ const Auth = () => {
     }
   }, [currentUsername, navigate]);
 
-  const handleEnter = (e: React.FormEvent) => {
+  const handleEnter = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!username.trim()) {
+    const trimmedUsername = username.trim();
+
+    if (!trimmedUsername) {
       toast({
         title: "Error",
         description: "Please enter a username",
@@ -31,7 +34,7 @@ const Auth = () => {
       return;
     }
 
-    if (username.length < 2) {
+    if (trimmedUsername.length < 2) {
       toast({
         title: "Error",
         description: "Username must be at least 2 characters",
@@ -40,7 +43,7 @@ const Auth = () => {
       return;
     }
 
-    if (username.length > 20) {
+    if (trimmedUsername.length > 20) {
       toast({
         title: "Error",
         description: "Username must be less than 20 characters",
@@ -49,10 +52,29 @@ const Auth = () => {
       return;
     }
 
-    setUsername(username.trim());
+    // 1. Upsert profile into Supabase using the username as the ID
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .upsert({ 
+        id: trimmedUsername, 
+        username: trimmedUsername 
+      }, { onConflict: 'id' });
+
+    if (profileError) {
+      console.error('Error upserting profile:', profileError);
+      toast({
+        title: "Database Error",
+        description: "Could not register profile. Try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // 2. Set local session and navigate
+    setUsername(trimmedUsername);
     toast({
       title: "Welcome!",
-      description: `Let's focus, ${username}! 🚀`,
+      description: `Let's focus, ${trimmedUsername}! 🚀`,
     });
     navigate('/study');
   };
