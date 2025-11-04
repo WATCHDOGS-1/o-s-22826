@@ -15,7 +15,9 @@ const TimeTracker: React.FC = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    loadStats();
+    if (username) {
+      loadStats();
+    }
     const interval = setInterval(() => {
       if (isTracking) {
         setSessionTime((prev) => prev + 1);
@@ -26,21 +28,51 @@ const TimeTracker: React.FC = () => {
   }, [isTracking, username]);
 
   const loadStats = async () => {
-    const { data: stats } = await supabase
-      .from('user_stats')
-      .select('*')
-      .eq('user_id', username)
-      .maybeSingle();
+    if (!username) return;
 
-    if (stats) {
-      setDailyTime(stats.daily_minutes || 0);
-      setWeeklyTime(stats.weekly_minutes || 0);
-    }
+    // Calculate start of day and start of week for RPC calls
+    const today = new Date().toISOString().split('T')[0];
+    const startOfWeek = new Date();
+    // Adjust to Sunday (0) start of week
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); 
+    const startOfWeekISO = startOfWeek.toISOString().split('T')[0];
+
+    // Fetch daily and weekly minutes using RPCs
+    const [{ data: dailyData }, { data: weeklyData }] = await Promise.all([
+      supabase.rpc('get_daily_minutes', { p_date: today, p_user_id: username }),
+      supabase.rpc('get_period_minutes', { p_start_date: startOfWeekISO, p_user_id: username }),
+    ]);
+
+    setDailyTime(dailyData || 0);
+    setWeeklyTime(weeklyData || 0);
   };
 
-  const startTracking = () => {
-    const sessionId = Math.random().toString(36).substr(2, 9);
-    setCurrentSessionId(sessionId);
+  const startTracking = async () => {
+    if (!username) return;
+    
+    // 1. Insert new session record
+    const { data, error } = await supabase
+      .from('study_sessions')
+      .insert({
+        user_id: username,
+        room_id: 'default_room', // Assuming a default room ID
+        started_at: new Date().toISOString(),
+        minutes_studied: 0,
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('Error starting session:', error);
+      toast({
+        title: "Error",
+        description: "Failed to start session tracking",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setCurrentSessionId(data.id);
     setIsTracking(true);
     setSessionTime(0);
 
@@ -51,11 +83,12 @@ const TimeTracker: React.FC = () => {
   };
 
   const stopTracking = async () => {
-    if (!currentSessionId) return;
+    if (!currentSessionId || !username) return;
 
     const minutes = Math.floor(sessionTime / 60);
 
-    const { error } = await supabase
+    // 2. Update session record with end time and total minutes
+    const { error: updateError } = await supabase
       .from('study_sessions')
       .update({
         ended_at: new Date().toISOString(),
@@ -63,8 +96,8 @@ const TimeTracker: React.FC = () => {
       })
       .eq('id', currentSessionId);
 
-    if (error) {
-      console.error('Error saving session:', error);
+    if (updateError) {
+      console.error('Error saving session:', updateError);
       toast({
         title: "Error",
         description: "Failed to save session",
@@ -73,11 +106,16 @@ const TimeTracker: React.FC = () => {
       return;
     }
 
-    // Update stats
-    await supabase.rpc('update_user_study_stats', {
+    // 3. Update user stats (streak, total minutes, etc.)
+    const { error: rpcError } = await supabase.rpc('update_user_study_stats', {
       p_user_id: username,
       p_minutes: minutes
     });
+    
+    if (rpcError) {
+      console.error('Error updating stats:', rpcError);
+      // We continue even if stats update fails, as the session was saved.
+    }
 
     setIsTracking(false);
     setCurrentSessionId(null);

@@ -22,22 +22,124 @@ const VideoGrid: React.FC = () => {
   const [screenSharing, setScreenSharing] = useState(false);
   const { username } = useUser();
   const { toast } = useToast();
+  
+  // Refs for managing connections and video elements
   const videoRefs = useRef<{ [key: string]: HTMLVideoElement | null }>({});
   const channelRef = useRef<any>(null);
+  const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
+  
+  // Stable local ID for signaling and presence tracking
+  const localUserId = useRef(Math.random().toString(36).substr(2, 9));
 
   useEffect(() => {
-    initializeMedia();
-    setupPresenceChannel();
+    if (username) {
+      initializeMedia();
+      setupPresenceChannel();
+    }
 
     return () => {
       if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
       }
+      peerConnections.current.forEach(pc => pc.close());
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
       }
     };
   }, [username]);
+
+  // --- WebRTC Signaling and Connection Management ---
+
+  const sendSignal = (remoteId: string, signal: any) => {
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'signal',
+        payload: {
+          senderId: localUserId.current,
+          receiverId: remoteId,
+          signal: signal,
+        },
+      });
+    }
+  };
+
+  const createPeerConnection = (remoteId: string) => {
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+    });
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        sendSignal(remoteId, { type: 'ice', candidate: event.candidate });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      const [remoteStream] = event.streams;
+      setParticipants(prev => prev.map(p => 
+        p.id === remoteId ? { ...p, stream: remoteStream } : p
+      ));
+      
+      // Attach stream to video element if it exists
+      if (videoRefs.current[remoteId]) {
+        videoRefs.current[remoteId]!.srcObject = remoteStream;
+      }
+    };
+
+    if (localStream) {
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream!));
+    }
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+        console.log(`Peer ${remoteId} disconnected.`);
+        // Handle cleanup if necessary, though presence should cover this
+      }
+    };
+
+    peerConnections.current.set(remoteId, pc);
+    return pc;
+  };
+  
+  const initiateCall = async (remoteId: string) => {
+    const pc = createPeerConnection(remoteId);
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    sendSignal(remoteId, pc.localDescription);
+  };
+
+  const handleSignal = async (payload: any) => {
+    const { senderId, receiverId, signal } = payload;
+    
+    if (receiverId !== localUserId.current) return;
+
+    let pc = peerConnections.current.get(senderId);
+
+    if (signal.type === 'offer') {
+      if (!pc) {
+        pc = createPeerConnection(senderId);
+      }
+      await pc.setRemoteDescription(new RTCSessionDescription(signal));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      sendSignal(senderId, pc.localDescription);
+    } else if (signal.type === 'answer') {
+      if (pc && pc.remoteDescription?.type !== 'answer') {
+        await pc.setRemoteDescription(new RTCSessionDescription(signal));
+      }
+    } else if (signal.type === 'ice') {
+      if (pc && signal.candidate) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+        } catch (e) {
+          console.error('Error adding ICE candidate:', e);
+        }
+      }
+    }
+  };
+
+  // --- Media Initialization ---
 
   const initializeMedia = async () => {
     try {
@@ -47,8 +149,8 @@ const VideoGrid: React.FC = () => {
       });
       setLocalStream(stream);
       
-      if (videoRefs.current['local']) {
-        videoRefs.current['local']!.srcObject = stream;
+      if (videoRefs.current[localUserId.current]) {
+        videoRefs.current[localUserId.current]!.srcObject = stream;
       }
 
       toast({
@@ -65,31 +167,71 @@ const VideoGrid: React.FC = () => {
     }
   };
 
+  // --- Presence Channel Setup ---
+
   const setupPresenceChannel = () => {
     const channel = supabase.channel('study-room');
 
     channel
+      .on('broadcast', { event: 'signal' }, (payload) => {
+        handleSignal(payload.payload);
+      })
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
         const users = Object.values(state).flat() as any[];
-        setParticipants(users.map(u => ({ id: u.id, username: u.username })));
+        
+        const newParticipants = users
+          .filter(u => u.id !== localUserId.current)
+          .map(u => ({ 
+            id: u.id, 
+            username: u.username,
+            stream: participants.find(p => p.id === u.id)?.stream,
+          }));
+        
+        setParticipants(newParticipants);
+        
+        // Initiate calls to new users
+        newParticipants.forEach(p => {
+            if (!peerConnections.current.has(p.id)) {
+                // Simple tie-breaker: only initiate call if local ID is lexicographically smaller
+                if (localUserId.current < p.id) {
+                    initiateCall(p.id);
+                }
+            }
+        });
       })
       .on('presence', { event: 'join' }, ({ newPresences }) => {
-        toast({
-          title: "User Joined",
-          description: `${newPresences[0].username} joined the room`,
+        newPresences.forEach(p => {
+            if (p.id === localUserId.current) return;
+            toast({
+              title: "User Joined",
+              description: `${p.username} joined the room`,
+            });
+            // If we are the lexicographically smaller ID, we initiate the call immediately
+            if (localUserId.current < p.id) {
+                initiateCall(p.id);
+            }
         });
       })
       .on('presence', { event: 'leave' }, ({ leftPresences }) => {
-        toast({
-          title: "User Left",
-          description: `${leftPresences[0].username} left the room`,
+        leftPresences.forEach(p => {
+            toast({
+              title: "User Left",
+              description: `${p.username} left the room`,
+            });
+            // Clean up peer connection
+            const pc = peerConnections.current.get(p.id);
+            if (pc) {
+                pc.close();
+                peerConnections.current.delete(p.id);
+            }
+            setParticipants(prev => prev.filter(pt => pt.id !== p.id));
         });
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           await channel.track({
-            id: Math.random().toString(36).substr(2, 9),
+            id: localUserId.current,
             username: username,
             online_at: new Date().toISOString(),
           });
@@ -99,38 +241,67 @@ const VideoGrid: React.FC = () => {
     channelRef.current = channel;
   };
 
-  const toggleVideo = () => {
+  // --- Controls ---
+
+  const updateLocalTracks = (kind: 'video' | 'audio', enabled: boolean) => {
     if (localStream) {
-      const videoTrack = localStream.getVideoTracks()[0];
-      videoTrack.enabled = !videoTrack.enabled;
-      setVideoEnabled(videoTrack.enabled);
+      const tracks = kind === 'video' ? localStream.getVideoTracks() : localStream.getAudioTracks();
+      tracks.forEach(track => (track.enabled = enabled));
     }
+  };
+
+  const toggleVideo = () => {
+    const newEnabled = !videoEnabled;
+    updateLocalTracks('video', newEnabled);
+    setVideoEnabled(newEnabled);
   };
 
   const toggleAudio = () => {
-    if (localStream) {
-      const audioTrack = localStream.getAudioTracks()[0];
-      audioTrack.enabled = !audioTrack.enabled;
-      setAudioEnabled(audioTrack.enabled);
-    }
+    const newEnabled = !audioEnabled;
+    updateLocalTracks('audio', newEnabled);
+    setAudioEnabled(newEnabled);
   };
 
   const startScreenShare = async () => {
+    if (screenSharing) return;
+
     try {
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
       });
       
-      if (videoRefs.current['local']) {
-        videoRefs.current['local']!.srcObject = screenStream;
+      if (videoRefs.current[localUserId.current]) {
+        videoRefs.current[localUserId.current]!.srcObject = screenStream;
       }
+      
+      // Replace tracks on all peer connections
+      peerConnections.current.forEach(pc => {
+          const videoTrack = screenStream.getVideoTracks()[0];
+          const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) {
+              sender.replaceTrack(videoTrack);
+          } else {
+              pc.addTrack(videoTrack, screenStream);
+          }
+      });
 
       setScreenSharing(true);
       
       screenStream.getVideoTracks()[0].onended = () => {
         setScreenSharing(false);
-        if (localStream && videoRefs.current['local']) {
-          videoRefs.current['local']!.srcObject = localStream;
+        
+        // Revert to camera stream
+        if (localStream && videoRefs.current[localUserId.current]) {
+          videoRefs.current[localUserId.current]!.srcObject = localStream;
+          
+          // Replace tracks back to camera stream
+          peerConnections.current.forEach(pc => {
+              const cameraTrack = localStream.getVideoTracks()[0];
+              const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+              if (sender) {
+                  sender.replaceTrack(cameraTrack);
+              }
+          });
         }
       };
 
@@ -152,7 +323,7 @@ const VideoGrid: React.FC = () => {
   };
 
   const displayedParticipants = [
-    { id: 'local', username: `You (${username})`, stream: localStream, pinned: false },
+    { id: localUserId.current, username: `You (${username})`, stream: localStream, pinned: false },
     ...participants,
   ].slice(0, maxVideos);
 
@@ -188,10 +359,16 @@ const VideoGrid: React.FC = () => {
             }`}
           >
             <video
-              ref={(el) => (videoRefs.current[participant.id] = el)}
+              ref={(el) => {
+                videoRefs.current[participant.id] = el;
+                // Attach stream if available
+                if (el && participant.stream) {
+                    el.srcObject = participant.stream;
+                }
+              }}
               autoPlay
               playsInline
-              muted={participant.id === 'local'}
+              muted={participant.id === localUserId.current}
               className="w-full h-full object-cover bg-card"
             />
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">

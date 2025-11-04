@@ -36,7 +36,7 @@
     --radius: 1rem;
 
     --gradient-primary: linear-gradient(135deg, hsl(200 100% 60%), hsl(210 100% 55%));
-    --shadow-neon: 0 0 20px hsl(200 100% 60% / 0.5);
+    --shadow-neon: 0 0 10px hsl(200 100% 60% / 0.3); /* Reduced intensity */
   }
 
   .dark {
@@ -85,11 +85,11 @@
   }
   
   .glow-strong {
-    box-shadow: 0 0 30px hsl(200 100% 60% / 0.8);
+    box-shadow: 0 0 20px hsl(200 100% 60% / 0.5); /* Reduced intensity */
   }
 
   .text-glow {
-    text-shadow: 0 0 20px hsl(200 100% 60% / 0.8);
+    text-shadow: 0 0 10px hsl(200 100% 60% / 0.5); /* Reduced intensity */
   }
 
   .bg-gradient-primary {
@@ -124,8 +124,8 @@
   }
 
   @keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 20px hsl(200 100% 60% / 0.5); }
-    50% { box-shadow: 0 0 40px hsl(200 100% 60% / 0.8); }
+    0%, 100% { box-shadow: 0 0 15px hsl(200 100% 60% / 0.4); } /* Adjusted pulse glow */
+    50% { box-shadow: 0 0 30px hsl(200 100% 60% / 0.7); } /* Adjusted pulse glow */
   }
 
   @keyframes slide-up {
