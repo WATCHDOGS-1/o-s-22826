@@ -70,53 +70,54 @@ const PomodoroTimer = () => {
     : ((25 * 60 - (minutes * 60 + seconds)) / (25 * 60)) * 100;
 
   return (
-    <div className="glass p-6 rounded-2xl glow animate-slide-up">
-      <h2 className="text-2xl font-bold mb-4 text-glow">Pomodoro Timer</h2>
+    <div className="glass p-4 rounded-2xl glow animate-slide-up">
+      <h2 className="text-xl font-bold mb-3 text-glow">Pomodoro</h2>
       
-      <div className="relative w-48 h-48 mx-auto mb-6">
+      <div className="relative w-40 h-40 mx-auto mb-4">
         <svg className="w-full h-full transform -rotate-90">
           <circle
-            cx="96"
-            cy="96"
-            r="88"
+            cx="80"
+            cy="80"
+            r="72"
             stroke="hsl(var(--border))"
-            strokeWidth="8"
+            strokeWidth="6"
             fill="none"
           />
           <circle
-            cx="96"
-            cy="96"
-            r="88"
+            cx="80"
+            cy="80"
+            r="72"
             stroke={isBreak ? "hsl(var(--secondary))" : "hsl(var(--primary))"}
-            strokeWidth="8"
+            strokeWidth="6"
             fill="none"
-            strokeDasharray={`${2 * Math.PI * 88}`}
-            strokeDashoffset={`${2 * Math.PI * 88 * (1 - progress / 100)}`}
+            strokeDasharray={`${2 * Math.PI * 72}`}
+            strokeDashoffset={`${2 * Math.PI * 72 * (1 - progress / 100)}`}
             className="transition-all duration-1000 glow"
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-center">
-            <div className="text-5xl font-bold text-glow">
+            <div className="text-4xl font-bold text-glow">
               {minutes.toString().padStart(2, '0')}:{seconds.toString().padStart(2, '0')}
             </div>
-            <div className="text-sm text-muted-foreground mt-2">
-              {isBreak ? 'Break Time' : 'Focus Time'}
+            <div className="text-xs text-muted-foreground mt-1">
+              {isBreak ? 'Break' : 'Focus'}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="flex justify-center gap-4">
+      <div className="flex justify-center gap-3">
         <Button
           onClick={toggle}
           variant={isActive ? 'destructive' : 'default'}
           className="glow"
+          size="sm"
         >
-          {isActive ? <Pause /> : <Play />}
+          {isActive ? <Pause size={16} /> : <Play size={16} />}
         </Button>
-        <Button onClick={reset} variant="outline" className="glow">
-          <RotateCcw />
+        <Button onClick={reset} variant="outline" className="glow" size="sm">
+          <RotateCcw size={16} />
         </Button>
       </div>
     </div>

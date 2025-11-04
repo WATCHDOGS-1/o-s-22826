@@ -4,8 +4,6 @@ import { useUser } from '@/contexts/UserContext';
 import VideoGrid from '@/components/VideoGrid';
 import TimeTracker from '@/components/TimeTracker';
 import PomodoroTimer from '@/components/PomodoroTimer';
-import Chat from '@/components/Chat';
-import Leaderboard from '@/components/Leaderboard';
 import Header from '@/components/Header';
 
 const StudyRoom = () => {
@@ -31,18 +29,16 @@ const StudyRoom = () => {
       <Header />
 
       <div className="container mx-auto px-4 py-6 relative z-10">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main content area */}
-          <div className="lg:col-span-2 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Main content area - bigger */}
+          <div className="lg:col-span-3">
             <VideoGrid />
-            <TimeTracker />
           </div>
 
-          {/* Sidebar */}
-          <div className="space-y-6">
+          {/* Sidebar - smaller */}
+          <div className="space-y-4">
             <PomodoroTimer />
-            <Leaderboard />
-            <Chat />
+            <TimeTracker />
           </div>
         </div>
       </div>

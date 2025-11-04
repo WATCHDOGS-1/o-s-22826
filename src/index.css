@@ -13,17 +13,17 @@
     --popover: 222 84% 8%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 280 100% 70%;
+    --primary: 200 100% 60%;
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 280 100% 85%;
+    --primary-glow: 200 100% 75%;
 
-    --secondary: 200 100% 60%;
+    --secondary: 195 100% 50%;
     --secondary-foreground: 0 0% 100%;
 
     --muted: 217 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
 
-    --accent: 340 100% 65%;
+    --accent: 210 100% 55%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 62.8% 50.6%;
@@ -31,12 +31,12 @@
 
     --border: 217 32.6% 20%;
     --input: 217 32.6% 20%;
-    --ring: 280 100% 70%;
+    --ring: 200 100% 60%;
 
     --radius: 1rem;
 
-    --gradient-primary: linear-gradient(135deg, hsl(280 100% 70%), hsl(340 100% 65%));
-    --shadow-neon: 0 0 20px hsl(280 100% 70% / 0.5);
+    --gradient-primary: linear-gradient(135deg, hsl(200 100% 60%), hsl(210 100% 55%));
+    --shadow-neon: 0 0 20px hsl(200 100% 60% / 0.5);
   }
 
   .dark {
@@ -85,11 +85,11 @@
   }
   
   .glow-strong {
-    box-shadow: 0 0 30px hsl(280 100% 70% / 0.8);
+    box-shadow: 0 0 30px hsl(200 100% 60% / 0.8);
   }
 
   .text-glow {
-    text-shadow: 0 0 20px hsl(280 100% 70% / 0.8);
+    text-shadow: 0 0 20px hsl(200 100% 60% / 0.8);
   }
 
   .bg-gradient-primary {
@@ -124,8 +124,8 @@
   }
 
   @keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 20px hsl(280 100% 70% / 0.5); }
-    50% { box-shadow: 0 0 40px hsl(280 100% 70% / 0.8); }
+    0%, 100% { box-shadow: 0 0 20px hsl(200 100% 60% / 0.5); }
+    50% { box-shadow: 0 0 40px hsl(200 100% 60% / 0.8); }
   }
 
   @keyframes slide-up {

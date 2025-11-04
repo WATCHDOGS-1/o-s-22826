@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { useUser } from '@/contexts/UserContext';
+import Leaderboard from '@/components/Leaderboard';
 
 const Auth = () => {
   const [username, setUsernameInput] = useState('');
@@ -57,7 +58,7 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen p-4 relative overflow-hidden">
       {/* Animated background */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute w-96 h-96 bg-primary/20 rounded-full blur-3xl animate-float" style={{ top: '10%', left: '10%' }} />
@@ -65,38 +66,52 @@ const Auth = () => {
         <div className="absolute w-96 h-96 bg-accent/20 rounded-full blur-3xl animate-float" style={{ bottom: '10%', left: '50%', animationDelay: '4s' }} />
       </div>
 
-      <div className="glass w-full max-w-md p-8 rounded-2xl glow animate-slide-up relative z-10">
-        <h1 className="text-6xl font-bold text-center mb-2 bg-gradient-primary bg-clip-text text-transparent text-glow">
-          OnlyFocus
-        </h1>
-        <p className="text-center text-muted-foreground mb-8">
-          Enter your username to start focusing
-        </p>
+      <div className="container mx-auto relative z-10">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start pt-8">
+          {/* Auth Section */}
+          <div className="flex items-center justify-center">
+            <div className="glass w-full max-w-md p-8 rounded-2xl glow animate-slide-up">
+              <h1 className="text-6xl font-bold text-center mb-2 bg-gradient-primary bg-clip-text text-transparent text-glow">
+                OnlyFocus
+              </h1>
+              <p className="text-center text-muted-foreground mb-8">
+                Enter your username to start focusing
+              </p>
 
-        <form onSubmit={handleEnter} className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Username</label>
-            <Input
-              type="text"
-              value={username}
-              onChange={(e) => setUsernameInput(e.target.value)}
-              placeholder="Choose your focus name"
-              className="glass border-primary/50 focus:border-primary transition-all text-lg py-6"
-              autoFocus
-            />
+              <form onSubmit={handleEnter} className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Username</label>
+                  <Input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsernameInput(e.target.value)}
+                    placeholder="Choose your focus name"
+                    className="glass border-primary/50 focus:border-primary transition-all text-lg py-6"
+                    autoFocus
+                  />
+                </div>
+
+                <Button
+                  type="submit"
+                  className="w-full bg-gradient-primary hover:opacity-90 transition-all glow-strong text-white font-semibold text-lg py-6"
+                >
+                  Enter Focus Mode 🚀
+                </Button>
+              </form>
+
+              <p className="text-center text-xs text-muted-foreground mt-6">
+                No signup required • Your username is stored locally
+              </p>
+            </div>
           </div>
 
-          <Button
-            type="submit"
-            className="w-full bg-gradient-primary hover:opacity-90 transition-all glow-strong text-white font-semibold text-lg py-6"
-          >
-            Enter Focus Mode 🚀
-          </Button>
-        </form>
-
-        <p className="text-center text-xs text-muted-foreground mt-6">
-          No signup required • Your username is stored locally
-        </p>
+          {/* Leaderboard Section */}
+          <div className="flex items-start justify-center">
+            <div className="w-full max-w-md">
+              <Leaderboard />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

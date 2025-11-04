@@ -38,23 +38,8 @@ const TimeTracker: React.FC = () => {
     }
   };
 
-  const startTracking = async () => {
+  const startTracking = () => {
     const sessionId = Math.random().toString(36).substr(2, 9);
-    
-    const { error } = await supabase
-      .from('study_sessions')
-      .insert([{ id: sessionId, user_id: username, room_id: 'global' }]);
-
-    if (error) {
-      console.error('Error starting session:', error);
-      toast({
-        title: "Error",
-        description: "Failed to start session",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setCurrentSessionId(sessionId);
     setIsTracking(true);
     setSessionTime(0);
@@ -112,27 +97,27 @@ const TimeTracker: React.FC = () => {
   };
 
   return (
-    <div className="glass p-6 rounded-2xl glow animate-slide-up">
-      <h2 className="text-2xl font-bold mb-6 text-glow">Time Tracker</h2>
+    <div className="glass p-4 rounded-2xl glow animate-slide-up">
+      <h2 className="text-xl font-bold mb-4 text-glow">Time Tracker</h2>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="glass p-4 rounded-xl border border-primary/30">
-          <div className="text-sm text-muted-foreground mb-1">Session Time</div>
-          <div className="text-3xl font-bold text-primary animate-pulse-glow">
+      <div className="grid grid-cols-1 gap-3 mb-4">
+        <div className="glass p-3 rounded-xl border border-primary/30">
+          <div className="text-xs text-muted-foreground mb-1">Session</div>
+          <div className="text-2xl font-bold text-primary animate-pulse-glow">
             {formatTime(sessionTime)}
           </div>
         </div>
 
-        <div className="glass p-4 rounded-xl border border-secondary/30">
-          <div className="text-sm text-muted-foreground mb-1">Daily Total</div>
-          <div className="text-3xl font-bold text-secondary">
+        <div className="glass p-3 rounded-xl border border-secondary/30">
+          <div className="text-xs text-muted-foreground mb-1">Daily</div>
+          <div className="text-2xl font-bold text-secondary">
             {dailyTime} min
           </div>
         </div>
 
-        <div className="glass p-4 rounded-xl border border-accent/30">
-          <div className="text-sm text-muted-foreground mb-1">Weekly Total</div>
-          <div className="text-3xl font-bold text-accent">
+        <div className="glass p-3 rounded-xl border border-accent/30">
+          <div className="text-xs text-muted-foreground mb-1">Weekly</div>
+          <div className="text-2xl font-bold text-accent">
             {weeklyTime} min
           </div>
         </div>
@@ -140,15 +125,15 @@ const TimeTracker: React.FC = () => {
 
       <Button
         onClick={isTracking ? stopTracking : startTracking}
-        className={`w-full ${isTracking ? 'bg-destructive' : 'bg-gradient-primary'} hover:opacity-90 transition-all glow-strong text-white font-semibold text-lg py-6`}
+        className={`w-full ${isTracking ? 'bg-destructive' : 'bg-gradient-primary'} hover:opacity-90 transition-all glow text-white font-semibold py-4`}
       >
         {isTracking ? (
           <>
-            <Pause className="mr-2" /> Stop Session
+            <Pause className="mr-2" size={16} /> Stop
           </>
         ) : (
           <>
-            <Play className="mr-2" /> Start Session
+            <Play className="mr-2" size={16} /> Start
           </>
         )}
       </Button>
