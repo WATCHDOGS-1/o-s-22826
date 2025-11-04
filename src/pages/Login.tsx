@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect } => 'react';
 import { Auth } from '@supabase/auth-ui-react';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
 import { supabase } from '@/integrations/supabase/client';
@@ -57,7 +57,7 @@ const Login = () => {
                 password_label: 'Password',
                 email_input_placeholder: 'Your email or username',
                 password_input_placeholder: 'Your password',
-                email_confirm_message: 'Check your inbox for the confirmation link to activate your account!',
+                email_confirm_message: '', // Removed confirmation message
               },
             },
           }}
