@@ -28,28 +28,23 @@ const Auth = () => {
         if (error) throw error;
         navigate('/study');
       } else {
-        const { data, error } = await supabase.auth.signUp({
+        const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             emailRedirectTo: `${window.location.origin}/study`,
+            data: {
+              username: username,
+            }
           },
         });
         if (error) throw error;
 
-        if (data.user) {
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert([{ id: data.user.id, username }]);
-          
-          if (profileError) throw profileError;
-          
-          toast({
-            title: "Account created!",
-            description: "Welcome to OnlyFocus",
-          });
-          navigate('/study');
-        }
+        toast({
+          title: "Account created!",
+          description: "Welcome to OnlyFocus",
+        });
+        navigate('/study');
       }
     } catch (error: any) {
       toast({
