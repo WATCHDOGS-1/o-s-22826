@@ -43,7 +43,7 @@ const Login = () => {
             },
           }}
           theme="dark"
-          view="sign_in"
+          view="sign_up"
           localization={{
             variables: {
               sign_in: {
@@ -57,6 +57,7 @@ const Login = () => {
                 password_label: 'Password',
                 email_input_placeholder: 'Your email or username',
                 password_input_placeholder: 'Your password',
+                email_confirm_message: 'Check your inbox for the confirmation link to activate your account!',
               },
             },
           }}
