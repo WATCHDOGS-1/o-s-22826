@@ -105,11 +105,11 @@ export async function fetchLeaderboard() {
   
   const { data, error } = await supabase
     .from('user_stats')
-    .select(\`
+    .select(`
       xp, 
       current_streak, 
       profiles (first_name, last_name, avatar_url)
-    \`)
+    `)
     .order('xp', { ascending: false })
     .limit(10);
 
@@ -123,7 +123,7 @@ export async function fetchLeaderboard() {
     rank: index + 1,
     xp: item.xp,
     streak: item.current_streak,
-    name: item.profiles ? \`\${item.profiles.first_name || 'Focus'} \${item.profiles.last_name || 'User'}\` : 'Anonymous',
+    name: item.profiles ? `${item.profiles.first_name || 'Focus'} ${item.profiles.last_name || 'User'}` : 'Anonymous',
     avatar_url: item.profiles?.avatar_url,
   }));
 }
