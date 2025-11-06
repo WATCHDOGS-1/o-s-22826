@@ -81,15 +81,15 @@
 
 @layer utilities {
   .glow {
-    box-shadow: var(--shadow-neon);
+    box-shadow: 0 0 15px hsl(200 100% 60% / 0.3);
   }
   
   .glow-strong {
-    box-shadow: 0 0 20px hsl(200 100% 60% / 0.5); /* Reduced intensity */
+    box-shadow: 0 0 25px hsl(200 100% 60% / 0.5), 0 0 50px hsl(200 100% 60% / 0.2);
   }
 
   .text-glow {
-    text-shadow: 0 0 10px hsl(200 100% 60% / 0.5); /* Reduced intensity */
+    text-shadow: 0 0 20px hsl(200 100% 60% / 0.6);
   }
 
   .bg-gradient-primary {

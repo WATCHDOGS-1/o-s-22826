@@ -140,11 +140,26 @@ const VideoGrid: React.FC = () => {
 
   const initializeMedia = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      console.log('Requesting media access...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { width: 1280, height: 720 }, 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } 
+      });
+      console.log('Media stream obtained:', stream.getTracks());
       setLocalStream(stream);
-      if (videoRefs.current[localUserId.current]) {
-        videoRefs.current[localUserId.current]!.srcObject = stream;
-      }
+      
+      // Wait for video ref to be available
+      setTimeout(() => {
+        if (videoRefs.current[localUserId.current]) {
+          videoRefs.current[localUserId.current]!.srcObject = stream;
+          videoRefs.current[localUserId.current]!.play().catch(e => console.error('Error playing video:', e));
+        }
+      }, 100);
+      
       toast({ title: "Camera Ready", description: "Your video is now live" });
     } catch (error: any) {
       console.error('Error accessing media:', error);

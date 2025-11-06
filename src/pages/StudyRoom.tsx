@@ -12,7 +12,7 @@ const StudyRoom = () => {
 
   useEffect(() => {
     if (!username) {
-      navigate('/auth');
+      navigate('/');
     }
   }, [username, navigate]);
 
@@ -21,7 +21,7 @@ const StudyRoom = () => {
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
       {/* Animated background */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
         <div className="absolute w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-float" style={{ top: '20%', left: '5%' }} />
         <div className="absolute w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-float" style={{ top: '60%', right: '5%', animationDelay: '3s' }} />
       </div>

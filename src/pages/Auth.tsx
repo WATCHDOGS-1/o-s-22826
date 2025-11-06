@@ -13,12 +13,7 @@ const Auth = () => {
   const { toast } = useToast();
   const { username: currentUsername, setUsername } = useUser();
 
-  useEffect(() => {
-    // If already has username, redirect to study
-    if (currentUsername) {
-      navigate('/study');
-    }
-  }, [currentUsername, navigate]);
+  // Don't auto-redirect, let user manually join room
 
   const handleEnter = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,7 +47,7 @@ const Auth = () => {
       return;
     }
 
-    // 1. Upsert profile into Supabase using the username as the ID
+    // Upsert profile into Supabase using the username as the ID
     const { error: profileError } = await supabase
       .from('profiles')
       .upsert({ 
@@ -70,19 +65,30 @@ const Auth = () => {
       return;
     }
 
-    // 2. Set local session and navigate
+    // Initialize user stats
+    const { error: statsError } = await supabase
+      .from('user_stats')
+      .upsert({ 
+        user_id: trimmedUsername,
+        total_minutes: 0
+      }, { onConflict: 'user_id' });
+
+    if (statsError) {
+      console.error('Error initializing stats:', statsError);
+    }
+
+    // Set local session
     setUsername(trimmedUsername);
     toast({
       title: "Welcome!",
       description: `Let's focus, ${trimmedUsername}! 🚀`,
     });
-    navigate('/study');
   };
 
   return (
     <div className="min-h-screen p-4 relative overflow-hidden">
       {/* Animated background */}
-      <div className="absolute inset-0 overflow-hidden">
+      <div className="absolute inset-0 overflow-hidden -z-10">
         <div className="absolute w-96 h-96 bg-primary/20 rounded-full blur-3xl animate-float" style={{ top: '10%', left: '10%' }} />
         <div className="absolute w-96 h-96 bg-secondary/20 rounded-full blur-3xl animate-float" style={{ top: '60%', right: '10%', animationDelay: '2s' }} />
         <div className="absolute w-96 h-96 bg-accent/20 rounded-full blur-3xl animate-float" style={{ bottom: '10%', left: '50%', animationDelay: '4s' }} />
@@ -110,16 +116,33 @@ const Auth = () => {
                     placeholder="Choose your focus name"
                     className="glass border-primary/50 focus:border-primary transition-all text-lg py-6"
                     autoFocus
+                    disabled={!!currentUsername}
                   />
                 </div>
 
-                <Button
-                  type="submit"
-                  className="w-full bg-gradient-primary hover:opacity-90 transition-all glow-strong text-white font-semibold text-lg py-6"
-                >
-                  Enter Focus Mode 🚀
-                </Button>
+                {!currentUsername ? (
+                  <Button
+                    type="submit"
+                    className="w-full bg-gradient-primary hover:opacity-90 transition-all glow-strong text-white font-semibold text-lg py-6"
+                  >
+                    Set Username
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    onClick={() => navigate('/study')}
+                    className="w-full bg-gradient-primary hover:opacity-90 transition-all glow-strong text-white font-semibold text-lg py-6"
+                  >
+                    Join Study Room 🚀
+                  </Button>
+                )}
               </form>
+
+              {currentUsername && (
+                <p className="text-center text-sm text-primary mt-4">
+                  Logged in as: <span className="font-bold">{currentUsername}</span>
+                </p>
+              )}
 
               <p className="text-center text-xs text-muted-foreground mt-6">
                 No signup required • Your username is stored locally

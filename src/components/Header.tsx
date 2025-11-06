@@ -10,7 +10,7 @@ const Header: React.FC = () => {
 
   const handleLogout = () => {
     logout();
-    navigate('/auth');
+    navigate('/');
   };
 
   return (

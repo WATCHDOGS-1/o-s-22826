@@ -4,7 +4,7 @@ import { Trophy } from 'lucide-react';
 
 interface LeaderboardEntry {
   user_id: string;
-  weekly_minutes: number;
+  total_minutes: number;
 }
 
 const Leaderboard = () => {
@@ -19,11 +19,16 @@ const Leaderboard = () => {
   }, []);
 
   const loadLeaderboard = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('user_stats')
-      .select('user_id, weekly_minutes')
-      .order('weekly_minutes', { ascending: false })
+      .select('user_id, total_minutes')
+      .order('total_minutes', { ascending: false })
       .limit(10);
+
+    if (error) {
+      console.error('Error loading leaderboard:', error);
+      return;
+    }
 
     if (data) {
       setLeaders(data);
@@ -34,7 +39,7 @@ const Leaderboard = () => {
     <div className="glass p-6 rounded-2xl glow animate-slide-up">
       <div className="flex items-center gap-2 mb-4">
         <Trophy className="text-accent" />
-        <h2 className="text-2xl font-bold text-glow">Weekly Leaderboard</h2>
+        <h2 className="text-2xl font-bold text-glow">Top Focusers 🏆</h2>
       </div>
 
       <div className="space-y-3">
@@ -67,7 +72,7 @@ const Leaderboard = () => {
             <div className="flex-1">
               <div className="font-medium">{leader.user_id}</div>
               <div className="text-sm text-muted-foreground">
-                {Math.floor(leader.weekly_minutes / 60)}h {leader.weekly_minutes % 60}m
+                {Math.floor(leader.total_minutes / 60)}h {leader.total_minutes % 60}m
               </div>
             </div>
           </div>

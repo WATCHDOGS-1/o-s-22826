@@ -10,11 +10,10 @@ const App = () => (
   <Router>
     <UserProvider>
       <Routes>
-        <Route path="/" element={<Navigate to="/auth" replace />} />
-        <Route path="/auth" element={<Auth />} />
+        <Route path="/" element={<Auth />} />
         <Route path="/study" element={<StudyRoom />} />
         <Route path="/profile" element={<Profile />} />
-        <Route path="*" element={<Navigate to="/auth" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <Toaster />
     </UserProvider>
