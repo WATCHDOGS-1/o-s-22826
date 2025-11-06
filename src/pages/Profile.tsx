@@ -14,7 +14,7 @@ const Profile = () => {
 
   useEffect(() => {
     if (!currentUsername) {
-      navigate('/auth');
+      navigate('/');
       return;
     }
     setUsernameInput(currentUsername);

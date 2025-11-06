@@ -103,7 +103,7 @@ export type Database = {
           longest_streak: number | null
           total_minutes: number | null
           updated_at: string | null
-          user_id: string | null
+          user_id: string
         }
         Insert: {
           current_streak?: number | null
@@ -112,7 +112,7 @@ export type Database = {
           longest_streak?: number | null
           total_minutes?: number | null
           updated_at?: string | null
-          user_id?: string | null
+          user_id: string
         }
         Update: {
           current_streak?: number | null
@@ -121,7 +121,7 @@ export type Database = {
           longest_streak?: number | null
           total_minutes?: number | null
           updated_at?: string | null
-          user_id?: string | null
+          user_id?: string
         }
         Relationships: []
       }
